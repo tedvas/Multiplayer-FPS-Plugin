@@ -7,6 +7,7 @@
 #include "MultiplayerBulletCasing.generated.h"
 
 class USceneComponent;
+class USoundBase;
 
 UCLASS()
 class MULTIPLAYERFPS_API AMultiplayerBulletCasing : public AActor
@@ -17,32 +18,35 @@ public:
 	// Sets default values for this actor's properties
 	AMultiplayerBulletCasing();
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UStaticMeshComponent* BulletCasingMesh;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta = (Tooltip = "Rotate this to control which direction the casing launches"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "Rotate this to control which direction the casing launches"))
 	USceneComponent* LaunchRotationScene;
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void LaunchCasing();
 
-	UFUNCTION(BlueprintCallable, Server, Reliable)
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
 	virtual void DestroySelf();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void OnCasingHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetOwningGun(AMultiplayerGun* NewOwningPlayer);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	AMultiplayerGun* GetOwningGun();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void PlayCasingHitSound_BP(USoundBase* CasingSound, float CasingSoundVolume);
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	UPROPERTY(BlueprintReadWrite, Replicated)
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	AMultiplayerGun* OwningGun;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Launching")
@@ -60,13 +64,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "Using the physical material allows you to have a different sound for each surface"))
 	TMap<USoundBase*, UPhysicalMaterial*> CasingHitSounds;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (ClampMin = 0.0f))
 	float CasingHitSoundMaxVolume;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
 	bool HitSoundVolumeBaseOnCasingVelocity;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "If the casing is at or above this speed then the sound volume will be at max, but any lower than this it be quieter"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "If the casing is at or above this speed then the sound volume will be at max, but any lower than this it be quieter", ClampMin = 0.0f))
 	float HitSoundVolumeMinVelocity;
 
 	FTimerHandle DestroySelfTimerHandle;

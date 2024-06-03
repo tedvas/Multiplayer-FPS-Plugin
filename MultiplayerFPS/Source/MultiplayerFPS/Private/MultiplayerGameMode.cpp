@@ -26,14 +26,6 @@ void AMultiplayerGameMode::AddPlayerController(APlayerController* NewController)
 		{
 			ControllerCast->SetPlayerIndex(AllPlayerControllers.Find(NewController));
 		}
-		else
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "NewController Cast Failed MultiplayerGameMode.cpp:AddPlayerController");
-		}
-	}
-	else
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "NewController Invalid MultiplayerGameMode.cpp:AddPlayerController");
 	}
 }
 
@@ -45,22 +37,10 @@ void AMultiplayerGameMode::RemovePlayerController(APlayerController* ControllerT
 		{
 			AllPlayerControllers.Remove(ControllerToRemove);
 		}
-		else if (!ControllerToRemove)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "ControllerToRemove Invalid MultiplayerGameMode.cpp:RemovePlayerController");
-		}
-		else
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "ControllerToRemove Not In AllPlayerControllers Array MultiplayerGameMode.cpp:RemovePlayerController");
-		}
 	}
 	else if (Index <= AllPlayerControllers.Num() - 1)
 	{
 		AllPlayerControllers.RemoveAt(Index);
-	}
-	else
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Invalid Array Index MultiplayerGameMode.cpp:RemovePlayerController");
 	}
 }
 
@@ -74,10 +54,6 @@ void AMultiplayerGameMode::AddPlayerPawn(APawn* NewPawn)
 	if (NewPawn)
 	{
 		AllPlayerPawns.Add(NewPawn);
-	}
-	else
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "NewPawn Invalid MultiplayerGameMode.cpp:AddPlayerPawn");
 	}
 }
 
@@ -93,10 +69,6 @@ void AMultiplayerGameMode::RemovePlayerPawn(APawn* PawnToRemove, bool RemoveByIn
 	else if (Index <= AllPlayerPawns.Num() - 1)
 	{
 		AllPlayerPawns.RemoveAt(Index);
-	}
-	else
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Invalid Array Index MultiplayerGameMode.cpp:RemovePlayerPawn");
 	}
 }
 

@@ -8,8 +8,12 @@
 #include "MultiplayerBulletCasing.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Components/BoxComponent.h"
+#include "Animation/AnimInstance.h"
+#include "TimerManager.h"
 #include "MultiplayerGun.generated.h"
+
+UDELEGATE()
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnBulletHit, AActor*, ActorHit, UPhysicalMaterial*, HitSurface);
 
 class USceneComponent;
 class UAnimMontage;
@@ -18,6 +22,7 @@ class USoundBase;
 class UMaterialInterface;
 class UCameraShakeBase;
 class UDamageType;
+class UForceFeedbackAttenuation;
 
 USTRUCT()
 struct FGunHitEffectsReplication
@@ -27,16 +32,16 @@ struct FGunHitEffectsReplication
 public:
 
 	UPROPERTY()
-	FVector FireLocation;
+	FVector FireLocation = FVector::ZeroVector;
 
 	UPROPERTY()
-	FVector HitLocation;
+	FVector HitLocation = FVector::ZeroVector;
 
 	UPROPERTY()
-	FRotator HitRotation;
+	FRotator HitRotation = FRotator::ZeroRotator;
 
 	UPROPERTY()
-	UParticleSystem* HitEffect;
+	UParticleSystem* HitEffect = nullptr;
 
 	UPROPERTY()
 	FHitResult HitResult;
@@ -46,200 +51,19 @@ UCLASS()
 class MULTIPLAYERFPS_API AMultiplayerGun : public AInteractableItem
 {
 	GENERATED_BODY()
-	
-public:	
+
+public:
 	// Sets default values for this actor's properties
 	AMultiplayerGun();
 
-	UFUNCTION(BlueprintCallable, meta = (Tooltip = "This will make sure the owner is valid so if for example a player disconnects their gun won't just be floating where they last were"))
-	virtual void CheckForOwner();
+	UPROPERTY(BlueprintAssignable, Category = "Functions")
+	FOnBulletHit OnBulletHit;
 
-	UFUNCTION(BlueprintCallable)
-	virtual void OnPickupBoxCollisionBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UPrimitiveComponent* GetGunMesh();
 
-	UFUNCTION(BlueprintCallable)
-	virtual void OnPickupBoxCollisionEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetWasPickedup(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
-
-	UFUNCTION(Server, Reliable)
-	virtual void ServerSetWasPickedup(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
-
-	UFUNCTION(NetMulticast, Reliable)
-	virtual void MulticastSetWasPickedup(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetPickupCollisionEnabled();
-
-	UFUNCTION(Server, Reliable)
-	virtual void ServerSetPickupCollisionEnabled();
-
-	UFUNCTION(NetMulticast, Reliable)
-	virtual void MulticastSetPickupCollisionEnabled();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetOwningPlayer(APawn* NewOwningPlayer);
-
-	UFUNCTION(BlueprintCallable)
-	APawn* GetOwningPlayer();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void FireInput();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void Fire();
-
-	UFUNCTION(Server, Reliable)
-	virtual void ServerFire();
-
-	UFUNCTION(BlueprintCallable, Server, Reliable)
-	virtual void SpawnProjectile(FVector FireLocation, FRotator FireRotation, FVector TraceDirection);
-
-	UFUNCTION(BlueprintCallable)
-	virtual void ShotgunFire();
-
-	UFUNCTION(Server, Reliable)
-	virtual void ServerShotgunFire();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void ContinuousFire();
-
-	UFUNCTION(Server, Reliable)
-	virtual void ServerContinuousFire();
-
-	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent)
-	void Overheat_BP();
-
-	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent)
-	void CoolDown_BP();
-
-	UFUNCTION(Client, Reliable)
-	virtual void SpawnBulletCasing();
-
-	UFUNCTION(BlueprintCallable, Server, Reliable)
-	virtual void CheckBulletCasingLimit();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void StopFiring(bool EvenCancelBurst = false);
-
-	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent)
-	void AddRecoil_BP();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetCanShoot(bool NewCanShoot);
-
-	UFUNCTION(BlueprintCallable)
-	virtual bool GetCanShoot();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetFireMode(int NewFireMode);
-
-	UFUNCTION(BlueprintCallable)
-	virtual FVector GetPlayerArmsRelativeLocation();
-
-	UFUNCTION(BlueprintCallable)
-	virtual FRotator GetPlayerArmsRelativeRotation();
-
-	UFUNCTION(BlueprintCallable)
-	virtual int GetFireMode();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetUseADS(int NewUseADS);
-
-	UFUNCTION(BlueprintCallable)
-	virtual int GetUseADS();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetADSFOV(float NewADSFOV);
-
-	UFUNCTION(BlueprintCallable)
-	virtual float GetADSFOV();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetZoomFOV(float NewZoomFOV);
-
-	UFUNCTION(BlueprintCallable)
-	virtual float GetZoomFOV();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetTimeToADS(float NewTimeToADS);
-
-	UFUNCTION(BlueprintCallable)
-	virtual float GetTimeToADS();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetTimeToZoom(float NewTimeToZoom);
-
-	UFUNCTION(BlueprintCallable)
-	virtual float GetTimeToZoom();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetADSArmsLocation(FVector NewADSArmsLocation);
-
-	UFUNCTION(BlueprintCallable)
-	virtual FVector GetADSArmsLocation();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetADSArmsRotation(FRotator NewADSArmsRotation);
-
-	UFUNCTION(BlueprintCallable)
-	virtual FRotator GetADSArmsRotation();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetZoomArmsLocation(FVector NewZoomArmsLocation);
-
-	UFUNCTION(BlueprintCallable)
-	virtual FVector GetZoomArmsLocation();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetZoomArmsRotation(FRotator NewZoomArmsRotation);
-
-	UFUNCTION(BlueprintCallable)
-	virtual FRotator GetZoomArmsRotation();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetAmmoInMagazine(int NewAmmoInMagazine);
-
-	UFUNCTION(BlueprintCallable)
-	virtual int GetAmmoInMagazine();
-
-	UFUNCTION(BlueprintCallable)
-	virtual int GetMaxAmmoInMagazine();
-
-	UFUNCTION(BlueprintCallable)
-	virtual int GetReserveAmmo();
-
-	UFUNCTION(BlueprintCallable)
-	virtual int GetMaxReserveAmmo();
-
-	UFUNCTION(BlueprintCallable)
-	virtual bool GetUseProjectile();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void Reload();
-
-	UFUNCTION(Server, Reliable)
-	virtual void ServerReload();
-
-	UFUNCTION(NetMulticast, Reliable)
-	virtual void MulticastReload();
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to refill the magazine", ClampMin = 0))
-	float ReloadSpeed;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to finish reloading after the magazine was refilled", ClampMin = 0))
-	float ReloadSpeed1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Name")
-	FName WeaponName;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Ammo")
-	TArray<AMultiplayerBulletCasing*> SpawnedBulletCasings;
-
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UPrimitiveComponent* GetThirdPersonGunMesh();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This is only visible to the owning player"))
 	UStaticMeshComponent* GunStaticMesh;
@@ -254,8 +78,354 @@ protected:
 	USkeletalMeshComponent* ThirdPersonGunSkeletalMesh;
 
 	// Set this to false in the default constructor to use a static mesh
-	UPROPERTY(BlueprintReadOnly, Category = "Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This needs to be changed in C++"))
 	bool UseSkeletalMesh;
+
+	UFUNCTION(BlueprintCallable, meta = (Tooltip = "This will make sure the owner is valid so if for example a player disconnects their gun won't just be floating where they last were"), Category = "Functions")
+	virtual void CheckForOwner();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void DestroySelf();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetWasPickedup(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerSetWasPickedup(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastSetWasPickedup(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void SetWasPickedup_BP(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetPickupCollisionEnabled();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerSetPickupCollisionEnabled();
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastSetPickupCollisionEnabled();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetOwningPlayer(APawn* NewOwningPlayer);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	APawn* GetOwningPlayer();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void FireInput();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	void Fire();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	void ServerFire();
+
+	UFUNCTION(Client, Reliable, Category = "Functions")
+	void ClientFire();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void Fire_BP();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void ServerFire_BP();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void ClientFire_BP();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void AddPredeterminedSpread();
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Functions")
+	void ExecuteHitFunction(AActor* ParentPlayer = nullptr, AActor* HitActor = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void CallBulletHitDelegate(AActor* HitActor, UPhysicalMaterial* HitSurface);
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void ContinuousFire_BP();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void StopContinuousFire_BP();
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void SpawnProjectile(FVector FireLocation, FRotator FireRotation, FVector TraceDirection);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ShotgunFire();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerShotgunFire();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ContinuousFire();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerContinuousFire();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void Overheat_BP();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void CoolDown_BP();
+
+	UFUNCTION(Client, Reliable, Category = "Functions")
+	virtual void SpawnBulletCasing();
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void CheckBulletCasingLimit();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void StopFiring(bool EvenCancelBurst = false);
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void ServerStopFiring(bool EvenCancelBurst = false);
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void AddRecoil_BP();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void SpawnSmokeEffect_BP();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void CancelSmokeEffect();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void DestroySmokeEffect_BP();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCanShoot(bool NewCanShoot);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetCanShoot();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetFireMode(int NewFireMode);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetSocketName(FName NewSocketName);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FName GetSocketName();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FVector GetPlayerArmsRelativeLocation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FRotator GetPlayerArmsRelativeRotation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetFireMode();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetUseADS(int NewUseADS);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetUseADS();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetDivideAimingFOV(bool NewDivideAimingFOV);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetDivideAimingFOV();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetADSFOV(float NewADSFOV);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetADSFOV();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetZoomFOV(float NewZoomFOV);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetZoomFOV();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetTimeToADS(float NewTimeToADS);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetTimeToADS();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetTimeToZoom(float NewTimeToZoom);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetTimeToZoom();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetADSArmsLocation(FVector NewADSArmsLocation);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FVector GetADSArmsLocation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetADSArmsRotation(FRotator NewADSArmsRotation);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FRotator GetADSArmsRotation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetZoomArmsLocation(FVector NewZoomArmsLocation);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FVector GetZoomArmsLocation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetZoomArmsRotation(FRotator NewZoomArmsRotation);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FRotator GetZoomArmsRotation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetAmmoInMagazine(int NewAmmoInMagazine);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetAmmoInMagazine();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetMaxAmmoInMagazine();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetReserveAmmo();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetMaxReserveAmmo();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetUseSharedCalibers(bool NewUseSharedCalibers);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetUseSharedCalibers();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCaliberToUse(int32 NewCaliberToUse);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int32 GetCaliberToUse();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetDoesOverheat();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetCurrentHeat();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetMaxHeat();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetInfiniteAmmo(int NewInfiniteAmmo);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetInfiniteAmmo();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetUseProjectile();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	void Reload();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	void ServerReload();
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	void MulticastReload();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void Reload_BP();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void ServerReload_BP();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetIsExplosive(bool NewIsExplosive);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetIsExplosive();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetUseActorClassesForHitMarkers(int NewUseActorClassesForHitMarkers);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetUseActorClassesForHitMarkers();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHitMarkerActorSounds(TMap<TSubclassOf<AActor>, USoundBase*> NewHitMarkerActorSounds);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TMap<TSubclassOf<AActor>, USoundBase*> GetHitMarkerActorSounds();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHitMarkerSurfaceSounds(TMap<UPhysicalMaterial*, USoundBase*> NewHitMarkerSurfaceSounds);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TMap<UPhysicalMaterial*, USoundBase*> GetHitMarkerSurfaceSounds();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetReloadGunSound(USoundBase* NewReloadGunSound);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual USoundBase* GetReloadGunSound();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Name")
+	FName WeaponName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "Only set this variable if you are placing the gun in the level, do not set this at runtime"))
+	bool WasPickedupBeginPlay;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to refill the magazine", ClampMin = 0))
+	float ReloadSpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to finish reloading after the magazine was refilled", ClampMin = 0))
+	float ReloadSpeed1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "If set to 0 it will just use the animation length, if this is not 0 it will use this to determine how long it takes to switch off of and onto this weapon", ClampMin = 0.0f))
+	float WeaponSwitchTime;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimationAsset* WeaponSwitchAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool UseTwoWeaponSwitchAnimations;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimationAsset* WeaponSwitchAnimation1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Played when switching to this gun, only applies if you are using a skeletal mesh for your gun"))
+	UAnimationAsset* SwitchToGunAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Played when switching to another gun, only applies if you are using a skeletal mesh for your gun"))
+	UAnimationAsset* SwitchOffGunAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimationAsset* ReloadAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied"))
+	UAnimationAsset* ReloadEmptyAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool UseTwoReloadAnimations;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimationAsset* ReloadAnimation1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied"))
+	UAnimationAsset* ReloadEmptyAnimation1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Only applies if you are using a skeletal mesh for your gun"))
+	UAnimationAsset* ReloadGunAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Plays when the gun is emptied, only applies if you are using a skeletal mesh for your gun"))
+	UAnimationAsset* ReloadEmptyGunAnimation;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Ammo")
+	TArray<AMultiplayerBulletCasing*> SpawnedBulletCasings;
+
+protected:
+	// Called when the game starts or when spawned
+	virtual void BeginPlay() override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This is where the muzzle flash will be and if you have fire location and or rotation based on the barrel it will be based on this component"))
 	USceneComponent* FireSceneComponent;
@@ -263,42 +433,39 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USceneComponent* BulletCasingSceneComponent;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UBoxComponent* PickupBoxCollision;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This only matters if UseBoxCollisionForDamage = true, rescale this instead of the box collision"))
+	USceneComponent* FireBoxScene;
 
-	UPROPERTY(BlueprintReadWrite, Replicated)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This only matters if UseBoxCollisionForDamage = true"))
+	UBoxComponent* DamageBoxCollision;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	APawn* OwningPlayer;
 
 	// This is only used to control fire rate, to control if the player can fire set can shoot in the player character class
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	bool CanShoot;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = Semi-Auto, 1 = Full-Auto, 2 = Burst, 3 = Continuous, continuous fire would be for something like a flamethrower that is constantly firing so for example sound isn't played when damage is applied it's looped until you stop firing and is not recommended if UseProjectile = true", ClampMin = 0, ClampMax = 3))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = Semi-Auto, 1 = Full-Auto, 2 = Burst, 3 = Continuous, continuous fire would be for something like a flamethrower that is constantly firing so for example sound isn't played when damage is applied it's looped until you stop firing if this is true it is recommended to set UseProjectile to false and BulletCasingToSpawn to none", ClampMin = 0, ClampMax = 3))
 	int FireMode;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This would be useful for something like a flamethrower that has an area of effect rather than having the player hit only what is in the center of the screen, does not apply if UseProjectile = true"))
+	bool UseBoxCollisionForDamage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Does not work with projectiles"))
 	bool IsShotgun;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (ClampMin = 1))
 	int ShotgunAmountOfPellets;
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
 	int ShotgunAmountOfPelletsShot;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float ShotgunMinVerticalSpread;
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	TArray<FVector> ShotgunPelletHitLocations;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float ShotgunMaxVerticalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float ShotgunMinHorizontalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float ShotgunMaxHorizontalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = will not have spread, 1 = will only have spread when hip firing, 2 = will have spread when hip firing and zoomed in but not when ADSing, 3 = will have spread when hip firing and ADSing but not when zoom, 4 = will have spread no matter what", ClampMin = 0, ClampMax = 4))
-	int HaveBulletSpread;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Overrides aiming spread variables"))
+	bool UseAimingSpreadMultiplier;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
 	float SpreadAimingMultiplier;
@@ -315,6 +482,39 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
 	float MaxHipFireHorizontalSpread;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MinAimingFireVerticalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MaxAimingFireVerticalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MinAimingFireHorizontalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MaxAimingFireHorizontalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Spread is pre determined so it can replicate properly"))
+	bool AutomaticallyAddPreDeterminedSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables"))
+	TArray<FRotator> PreDeterminedSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables"))
+	TArray<FRotator> PreDeterminedAimingSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables"))
+	TArray<FRotator> PreDeterminedAimingSpreadWithMultiplier;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	int32 PreDeterminedSpreadIndex;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	int32 PreDeterminedAimingSpreadIndex;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	int32 PreDeterminedAimingSpreadWithMultiplierIndex;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Ammo", meta = (ClampMin = 0))
 	int AmmoInMagazine;
 
@@ -327,16 +527,34 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0))
 	int MaxReserveAmmo;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "Whether to use reserve ammo specific to this gun or use calibers shared by other guns that are chambered in the same caliber"))
+	bool UseSharedCalibers;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "This will use the index of the AllSharedCalibers variable on the player character starting at 0, only applies if UseSharedCalibers = true", ClampMin = 0))
+	int32 CaliberToUse;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Ammo", meta = (Tooltip = "0 = limited ammo, 1 = infinite reserve ammo, 2 = infinite ammo, this will override DoesOverheat", ClampMin = 0, ClampMax = 2))
+	int InfiniteAmmo;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "Only applies if FireMode = 1 or 3, if this is true firing will make it overheat instead of using ammo"))
 	bool DoesOverheat;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "0 = can fire while cooling down, 1 = can't fire while cooling down if max heat is reached, 2 = can't fire while cooling down no matter what", ClampMin = 0, ClampMax = 2))
+	int ProhibitFiringWhileCoolingDown;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Ammo")
+	bool ReachedMaxHeat;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0.001f))
 	float TimeToOverheat;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0.001f))
+	float TimeToCooldown;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0.0f))
 	float MaxHeat;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0))
+	UPROPERTY(BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0.0f))
 	float CurrentHeat;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Ammo")
@@ -354,10 +572,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo")
 	int MaxAmountOfBulletCasings;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "The amount of time between shots"), meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "The amount of time between shots"), meta = (ClampMin = 0.001f))
 	float FireRate;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "The amount of time between applying damage for continuous fire"), meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "The amount of time between applying damage for continuous fire"), meta = (ClampMin = 0.0f))
 	float ContinuousFireDamageRate;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (ClampMin = 0))
@@ -366,14 +584,20 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Category = "Firing", meta = (ClampMin = 0))
 	int AmountOfBurstShotsFired;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if UseProjectile = false"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if UseProjectile = false", ClampMin = 0.0f))
 	float FireRange;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "For this to replicate you need to replicate movement for the actor you're launching, for explosives this only applies to projectiles"))
+	bool LaunchPhysicsObjects;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if LaunchPhysicsObjects = true", ClampMin = 0.001f))
+	float LaunchObjectStrength;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if LaunchPhysicsObjects = true"))
+	bool LaunchObjectVelocityChange;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
 	bool IsExplosive;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	FVector ExplosionScale;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
 	bool ExplosionIgnoreOwner;
@@ -390,35 +614,44 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Projectile")
 	TSubclassOf<AMultiplayerProjectile> ProjectileToSpawn;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile", meta = (Tooltip = "Raising this number will spawn the projectile further forward to avoid colliding with the owner"))
-	float ProjectileSpawnForwardOffset;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	ESpawnActorCollisionHandlingMethod ProjectileSpawnCollisionHandlingMethod;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	bool ProjectileInheritsVelocity;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "Damage applied to the chest and everything else, for explosives this will serve as the base damage"), meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile", meta = (ToolTip = "This will determine the amount of time before projectile despawn if they don't hit anything, for explosives this will detonate them, 0 = disabled, only applies if UseProjectile = true", ClampMin = 0.0f))
+	float TimeToDespawnProjectile;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "This will also be the collision channel for explosives"))
+	TEnumAsByte<ECollisionChannel> CollisionChannel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "The owner and the gun are already ignored, if you want to ignore more actors set this at runtime, only applies if UseProjectile = false"))
+	TArray<AActor*> AdditionalActorsToIgnore;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "Damage applied to everything that has either no physical material or one not included in damage variable, for explosives this will serve as the base damage"), meta = (ClampMin = 0))
 	float DefaultDamage;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = 0))
-	float HeadDamage;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "Add pysical materials like the head to apply different damage, if left blank it will just apply default damage"))
+	TMap<UPhysicalMaterial*, float> Damage;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = 0))
-	float TorsoDamage;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = 0))
-	float LegDamage;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (ClampMin = 0.0f))
 	float ExplosiveDamageRadius;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage")
 	bool ExplosiveDoFullDamage;
 
-	UPROPERTY(BlueprintReadWrite, Replicated)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "0 = just apply damage, 1 = apply damage and execute ExecuteHitFunction(), 2 = just execute ExecuteHitFunction(), to use this override the ExecuteHitFunction() or add event ExecuteHitFunction, for projectiles you will need to define this function in the projectile, this function only runs on server", ClampMin = 0, ClampMax = 2))
+	int BulletHitMode;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	bool WasPickedup;
+
+	UPROPERTY()
+	int AmountOfTimesPickedup;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (Tooltip = "Set to 0 to disable", ClampMin = 0.0f))
+	float TimeToDespawnAfterDropped;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "Setting this to 0 will make the gun not use a socket and instead just use relative location and rotation, setting this to 1 will snap to socket without scale, and 2 will snap to socket including scale"), meta = (ClampMin = 0, ClampMax = 2))
 	int SnapToSocket;
@@ -438,17 +671,86 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location")
 	FRotator PlayerArmsRelativeRotation;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Effects")
-	UParticleSystem* Blood;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "This will also serve as the explosion for explosives"))
 	UParticleSystem* DefaultHitEffect;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "For explosives this will also be the explosion scale"))
+	FVector HitEffectScale;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "Add pysical materials like the head to spawn different particle effects, if left blank it will just use the default hit effect"))
+	TMap<UPhysicalMaterial*, UParticleSystem*> HitEffects;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
 	UParticleSystem* MuzzleFlash;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Firing")
+	UParticleSystemComponent* SpawnedContinuousMuzzleFlash;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = no, 1 = yes, 2 = indicator for overheating if DoesOverheat = true, will be set to 1 if DoesOverheat = false", ClampMin = 0, ClampMax = 2))
+	int SpawnSmokeEffectWhenShooting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "only applies if SpawnSmokeEffectWhenShooting = 1", ClampMin = 0))
+	int AmountOfShotsToSpawnSmoke;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Amount of time to not shoot to cancel spawning smoke", ClampMin = 0.001f))
+	float AmountOfTimeToCancelSmoke;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This would be used if you have a particle effect that loops and will not auto destroy"))
+	bool DestroySmokeEffectWhenNotShooting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This would be used if you have a sound effect that loops and will not auto destroy"))
+	bool DestroySmokeSoundWhenNotShooting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Amount of time to not shoot after spawning the smoke to destroy it, set to 0 to disable, this would be used if you have a particle effect that loops and will not auto destroy, overrides TimeToDestroySmokeSoundWhenNotShooting", ClampMin = 0.001))
+	float TimeToDestroySmokeWhenNotShooting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (ClampMin = 0.001))
+	float TimeToDestroySmokeSoundWhenNotShooting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Between 0 and 1, only applies if SpawnSmokeEffectWhenShooting = 2", ClampMin = 0.001, ClampMax = 1))
+	float PercentageOfOverheatToSpawnSmoke;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	UParticleSystem* SmokeEffectToSpawn;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing")
+	UParticleSystemComponent* SpawnedSmokeEffect;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if SpawnSmokeEffectWhenShooting is not 0, clear to not have a sound"))
+	USoundBase* SmokeSoundToSpawn;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing")
+	UAudioComponent* SpawnedSmokeSound;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing")
+	int BulletsShotForSmokeEffect;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if BulletHitMode equals 1 or 2, and works better for projectiles, set to 0 to disable", ClampMin = 0.0f))
+	float BulletHitModeDelay;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Clear this to disable"))
+	UForceFeedbackEffect* FireControllerVibration;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Used to cancel vibration with continuous fire"))
+	FName FireControllerVibrationTag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This also applies to explosives, clear this to disable"))
+	UForceFeedbackEffect* BulletHitControllerVibration;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	UForceFeedbackAttenuation* BulletHitControllerVibrationAttenuation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	FName BulletHitControllerVibrationTag;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
 	USoundBase* FireSound;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	USoundBase* ReloadGunSound;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Sound")
+	UAudioComponent* SpawnedContinuousFireSound;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sound", meta = (Tooltip = "Only applies to projectiles"))
 	bool BulletWhizzingSoundVolumeBasedOnSpeed;
@@ -468,22 +770,43 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Effects")
 	FVector BulletHitDecalSize;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "0 = hit actor classes, 1 = hit physical materials, 2 = prioritize physical material but fallback on actor class, only 0 works for explosives and box collision damage", ClampMin = 0, ClampMax = 2))
+	int UseActorClassesForHitMarkers;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "Only applies if UseActorClassesForHitMarkers = true"))
+	TMap<TSubclassOf<AActor>, USoundBase*> HitMarkerActorSounds;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "Using the physical material allows you to have a different sound for each surface, only applies if UseActorClassesForHitMarkers = false"))
+	TMap<UPhysicalMaterial*, USoundBase*> HitMarkerSurfaceSounds;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "If set to 0 it will play the animation montage, if set to 1 it will play the animation, if set to 2 it will play both", ClampMin = 0, ClampMax = 2))
+	int UseFireArmsAnimation;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
 	UAnimMontage* FireArmsAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	UAnimationAsset* FireArmsAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Only applies if you are using a skeletal mesh for your gun"))
+	UAnimationAsset* FireGunAnimation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "0 = will use ADS if player character allows, 1 = will use zoom if player character allows, 2 = will use ADS overriding variable in player character, 3 = will use zoom overriding variable in player character", ClampMin = 0, ClampMax = 3))
 	int UseADS;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "This is how much to subtract from current FOV"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "If false aiming will subtract from current FOV, if true aiming will divide from current FOV"))
+	bool DivideAimingFOV;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "This is how much to subtract or divide from current FOV"))
 	float ADSFOV;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "This is how much to subtract from current FOV"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "This is how much to subtract or divide from current FOV"))
 	float ZoomFOV;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (ClampMin = 0.001f))
 	float TimeToADS;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (ClampMin = 0.001f))
 	float TimeToZoom;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming")
@@ -510,6 +833,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Damage")
 	TSubclassOf<UDamageType> DamageType;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chaos Destruction", meta = (Tooltip = "Can cause stutters when firing especially on the client"))
+	bool CanCrumbleDestructibleMeshes;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chaos Destruction", meta = (Tooltip = "Only applies if IsShotgun = true, having this equal false will crumble destructibles at the average hit location of each pellet, setting this to true can cause stutters when firing especially on the client"))
+	bool CrumbleDestructibleMeshesWithEveryShotgunPellet;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chaos Destruction", meta = (Tooltip = "Also set this for explosives, destruction sphere will use this not damage radius"))
+	FVector DestructionSphereSize;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chaos Destruction", meta = (Tooltip = "This is used to destroy destructible meshes, make this either FS_MasterField or a child of it"))
+	TSubclassOf<AActor> DestructionSphereToSpawn;
+
 	UPROPERTY(EditAnywhere, Category = "Debugging", meta = (Tooltip = "Only applies if UseProjectile = false, if true a debug line will be drawn when firing to show where the line trace goes"))
 	bool ShowBulletPath;
 
@@ -528,18 +863,23 @@ protected:
 	UFUNCTION()
 	void OnRep_GunHitEffects();
 
-	UAudioComponent* SpawnedContinuousFireSound;
-	UParticleSystemComponent* SpawnedContinuousMuzzleFlash;
+	UPROPERTY()
+	bool SwitchedFireToServer;
 
 	FTimerHandle CheckForOwnerTimerHandle;
+	FTimerHandle DespawnTimerHandle;
 	FTimerDelegate FireTimerDelegate;
 	FTimerDelegate SpawnProjectileTimerDelegate;
 	FTimerHandle SpawnProjectileTimerHandle;
 	FTimerHandle FireTimerHandle;
 	FTimerHandle FireFullAutoTimerHandle;
 	FTimerHandle BurstFireTimerHandle;
+	FTimerHandle CancelSmokeEffectTimerHandle;
+	FTimerHandle DestroySmokeEffectTimerHandle;
+	FTimerDelegate BulletHitModeTimerDelegate;
+	FTimerHandle BulletHitModeTimerHandle;
 
-public:	
+public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 };

@@ -5,8 +5,11 @@
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "Components/AudioComponent.h"
+#include "MultiplayerCharacter.h"
+#include "Engine/OverlapResult.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "MultiplayerFPS.h"
+#include "Engine/World.h"
+#include "Engine.h"
 
 // Sets default values
 AMultiplayerProjectile::AMultiplayerProjectile()
@@ -19,14 +22,35 @@ AMultiplayerProjectile::AMultiplayerProjectile()
 	BulletWhizzingSoundComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("Bullet Whizzing Sound Component"));
 	BulletWhizzingSoundComponent->SetupAttachment(ProjectileMesh, NAME_None);
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Projectile Movement"));
-	ProjectileMovement->InitialSpeed = 10000.0f;
+	ProjectileMovement->InitialSpeed = 50000.0f;
 	ProjectileMovement->bRotationFollowsVelocity = true;
+	RadialForceComponent = CreateDefaultSubobject<URadialForceComponent>(TEXT("Radial Force Component"));
+	RadialForceComponent->SetupAttachment(ProjectileMesh, NAME_None);
 
 	ProjectileMesh->OnComponentHit.AddDynamic(this, &AMultiplayerProjectile::OnProjectileMeshHit);
+
+	LaunchPhysicsObjects = false;
+	LaunchObjectStrength = 7500.0f;
+	LaunchObjectVelocityChange = false;
+	IsExplosive = false;
+	ExplosionIgnoreOwner = false;
+	DefaultDamage = 35.0f;
+	ExplosiveDamageRadius = 500.0f;
+	ExplosiveDoFullDamage = false;
+	BulletHitMode = 0;
+	BulletHitModeDelay = 0.0f;
+	HitEffectScale = FVector(1.0f, 1.0f, 1.0f);
+	CanCrumbleDestructibleMeshes = true;
+	DestructionSphereSize = FVector(0.25f, 0.25f, 0.25f);
 
 	RegisteredHit = false;
 
 	bReplicates = true;
+}
+
+void AMultiplayerProjectile::DestroySelf()
+{
+	Destroy();
 }
 
 void AMultiplayerProjectile::OnProjectileMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -40,19 +64,69 @@ void AMultiplayerProjectile::RegisterHit_Implementation(const FHitResult& Hit)
 	{
 		if (IsExplosive == true)
 		{
-			Explode();
+			Explode(Hit);
 			return;
 		}
 
 		AActor* HitActor = Hit.GetActor();
-
 		EPhysicalSurface SurfaceType = UGameplayStatics::GetSurfaceType(Hit);
-
 		UParticleSystem* HitEffect;
+		UPhysicalMaterial* HitSurface = Hit.PhysMaterial.Get();
 
-		if (SurfaceType == SURFACE_HEAD || SurfaceType == SURFACE_CHEST || SurfaceType == SURFACE_TORSO || SurfaceType == SURFACE_LEG)
+		FOnProjectileHit.Broadcast(HitActor, HitSurface);
+
+		if (OwningPlayer)
 		{
-			HitEffect = Blood;
+			if (HitActor == OwningPlayer)
+			{
+				return;
+			}
+
+			if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+			{
+				if (AMultiplayerCharacter* EnemyCast = Cast<AMultiplayerCharacter>(HitActor))
+				{
+					if (EnemyCast->GetHealthComponent())
+					{
+						if (EnemyCast->GetHealthComponent()->GetHealth() > 0)
+						{
+							if (UseActorClassesForHitMarkers == 0 && HitActor)
+							{
+								PlayerCast->ShowHitMarker(HitActor, nullptr);
+							}
+							else if (UseActorClassesForHitMarkers == 1 && HitSurface)
+							{
+								PlayerCast->ShowHitMarker(nullptr, HitSurface);
+							}
+							else if (UseActorClassesForHitMarkers == 2 && HitActor && HitSurface)
+							{
+								PlayerCast->ShowHitMarker(HitActor, HitSurface);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		TArray<UPhysicalMaterial*> HitEffectPhysicalMaterials;
+		TArray<UParticleSystem*> HitParticleSystems;
+
+		HitEffects.GenerateKeyArray(HitEffectPhysicalMaterials);
+		HitEffects.GenerateValueArray(HitParticleSystems);
+
+		if (HitEffectPhysicalMaterials.Contains(HitSurface))
+		{
+			int HitEffectIndex;
+			HitEffectIndex = HitEffectPhysicalMaterials.Find(HitSurface);
+
+			if (HitParticleSystems.IsValidIndex(HitEffectIndex))
+			{
+				HitEffect = HitParticleSystems[HitEffectIndex];
+			}
+			else
+			{
+				HitEffect = DefaultHitEffect;
+			}
 		}
 		else
 		{
@@ -61,34 +135,93 @@ void AMultiplayerProjectile::RegisterHit_Implementation(const FHitResult& Hit)
 
 		SpawnHitParticleEffect(HitEffect, Hit.ImpactPoint, Hit.ImpactNormal.Rotation(), Hit);
 
-		if (SurfaceType == SURFACE_HEAD)
+		float DamageToApply;
+
+		TArray<UPhysicalMaterial*> DamagePhysicalMaterials;
+		TArray<float> DamageAmounts;
+
+		Damage.GenerateKeyArray(DamagePhysicalMaterials);
+		Damage.GenerateValueArray(DamageAmounts);
+
+		if (DamagePhysicalMaterials.Contains(HitSurface))
 		{
-			UGameplayStatics::ApplyPointDamage(HitActor, HeadDamage, HitDirection, Hit, OwningPlayer->GetInstigatorController(), OwningPlayer, DamageType);
-		}
-		else if (SurfaceType == SURFACE_TORSO)
-		{
-			UGameplayStatics::ApplyPointDamage(HitActor, TorsoDamage, HitDirection, Hit, OwningPlayer->GetInstigatorController(), OwningPlayer, DamageType);
-		}
-		else if (SurfaceType == SURFACE_LEG)
-		{
-			UGameplayStatics::ApplyPointDamage(HitActor, LegDamage, HitDirection, Hit, OwningPlayer->GetInstigatorController(), OwningPlayer, DamageType);
+			int DamageIndex;
+			DamageIndex = DamagePhysicalMaterials.Find(HitSurface);
+
+			if (DamageAmounts.IsValidIndex(DamageIndex))
+			{
+				DamageToApply = DamageAmounts[DamageIndex];
+			}
+			else
+			{
+				DamageToApply = DefaultDamage;
+			}
 		}
 		else
 		{
-			UGameplayStatics::ApplyPointDamage(HitActor, DefaultDamage, HitDirection, Hit, OwningPlayer->GetInstigatorController(), OwningPlayer, DamageType);
+			DamageToApply = DefaultDamage;
 		}
 
-		Destroy();
+		if (LaunchPhysicsObjects == true && LaunchObjectStrength > 0)
+		{
+			if (UPrimitiveComponent* HitComponent = Hit.GetComponent())
+			{
+				if (HitComponent->IsSimulatingPhysics() == true)
+				{
+					HitComponent->AddImpulse(HitDirection * LaunchObjectStrength, NAME_None, LaunchObjectVelocityChange);
+				}
+			}
+		}
+
+		if (BulletHitMode != 2)
+		{
+			UGameplayStatics::ApplyPointDamage(HitActor, DamageToApply, HitDirection, Hit, OwningPlayer->GetInstigatorController(), OwningPlayer, DamageType);
+		}
+
+		if (BulletHitMode != 0 && BulletHitModeDelay <= 0.0f)
+		{
+			ExecuteHitFunction(OwningPlayer, HitActor);
+		}
+
+		RegisteredHit = true;
+
+		MulticastSilenceBulletWhizzingSound();
+
+		if (BulletHitMode == 0 || BulletHitModeDelay <= 0.0f)
+		{
+			DestroySelf();
+		}
+
+		if (DestructionSphereToSpawn && CanCrumbleDestructibleMeshes == true)
+		{
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.bNoFail = true;
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+			GetWorld()->SpawnActor<AActor>(DestructionSphereToSpawn, FTransform(Hit.ImpactPoint.Rotation(), Hit.ImpactPoint + (Hit.ImpactNormal * -3.0f), DestructionSphereSize), SpawnParams);
+		}
+
+		MulticastSoftDestroyProjectile();
 	}
 
-	RegisteredHit = true;
 	ProjectileMesh->OnComponentHit.RemoveDynamic(this, &AMultiplayerProjectile::OnProjectileMeshHit);
 }
 
-void AMultiplayerProjectile::Explode_Implementation()
+void AMultiplayerProjectile::Explode_Implementation(const FHitResult& Hit, bool UseCurrentLocationForHit)
 {
 	if (OwningPlayer && IsExplosive == true && DefaultDamage > 0 && ExplosiveDamageRadius > 0)
 	{
+		FVector HitLocation;
+
+		if (UseCurrentLocationForHit == true)
+		{
+			HitLocation = GetActorLocation();
+		}
+		else
+		{
+			HitLocation = Hit.ImpactPoint;
+		}
+		
 		TArray<AActor*> IgnoredActors;
 
 		if (ExplosionIgnoreOwner == true)
@@ -122,52 +255,219 @@ void AMultiplayerProjectile::Explode_Implementation()
 			}
 		}
 
-		UGameplayStatics::ApplyRadialDamage(GetWorld(), DefaultDamage, GetActorLocation(), ExplosiveDamageRadius, DamageType, IgnoredActors, this, GetInstigatorController(), ExplosiveDoFullDamage, ECC_Visibility);
-
-		if (DefaultHitEffect)
+		if (RadialForceComponent && LaunchPhysicsObjects == true && LaunchObjectStrength > 0)
 		{
-			UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), DefaultHitEffect, GetActorLocation(), GetActorRotation(), ExplosionScale);
+			RadialForceComponent->FireImpulse();
 		}
 
-		if (DefaultBulletHitSound)
+		if (BulletHitMode != 2)
 		{
-			UGameplayStatics::PlaySoundAtLocation(GetWorld(), DefaultBulletHitSound, GetActorLocation());
+			if (UGameplayStatics::ApplyRadialDamage(GetWorld(), DefaultDamage, GetActorLocation(), ExplosiveDamageRadius, DamageType, IgnoredActors, this, GetInstigatorController(), ExplosiveDoFullDamage, ExplosiveCollisionChannel))
+			{
+				FCollisionQueryParams SphereParams(SCENE_QUERY_STAT(ApplyRadialDamage),  false, nullptr);
+
+				SphereParams.AddIgnoredActors(IgnoredActors);
+
+				TArray<FOverlapResult> Overlaps;
+				if (UWorld* World = GEngine->GetWorldFromContextObject(GetWorld(), EGetWorldErrorMode::LogAndReturnNull))
+				{
+					World->OverlapMultiByObjectType(Overlaps, GetActorLocation(), FQuat::Identity, FCollisionObjectQueryParams(FCollisionObjectQueryParams::InitType::AllDynamicObjects), FCollisionShape::MakeSphere(ExplosiveDamageRadius), SphereParams);
+				}
+
+				TMap<AActor*, TArray<FHitResult>> OverlapComponentMap;
+				for (const FOverlapResult& Overlap : Overlaps)
+				{
+					AActor* const OverlapActor = Overlap.OverlapObjectHandle.FetchActor();
+
+					if (OverlapActor &&
+						OverlapActor->CanBeDamaged() &&
+						Overlap.Component.IsValid())
+					{
+						FCollisionQueryParams LineParams(SCENE_QUERY_STAT(ComponentIsVisibleFrom), true, nullptr);
+						LineParams.AddIgnoredActors( IgnoredActors );
+
+						TWeakObjectPtr<UPrimitiveComponent> VictimComp = Overlap.Component;
+
+						UWorld* const World = VictimComp->GetWorld();
+						check(World);
+
+						FVector const TraceEnd = VictimComp->Bounds.Origin;
+						FVector TraceStart = GetActorLocation();
+						if (GetActorLocation() == TraceEnd)
+						{
+							TraceStart.Z += 0.01f;
+						}
+
+						FHitResult OutHitResult;
+						
+						FVector const FakeHitLoc = VictimComp->GetComponentLocation();
+						FVector const FakeHitNorm = (GetActorLocation() - FakeHitLoc).GetSafeNormal();
+						OutHitResult = FHitResult(VictimComp->GetOwner(), VictimComp.Get(), FakeHitLoc, FakeHitNorm);
+						
+						AActor* ExplosiveHitActor = VictimComp.Get()->GetOwner();
+
+						if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+						{
+							if (AMultiplayerCharacter* EnemyCast = Cast<AMultiplayerCharacter>(ExplosiveHitActor))
+							{
+								if (EnemyCast->GetHealthComponent())
+								{
+									if (EnemyCast->GetHealthComponent()->GetHealth() > 0)
+									{
+										if (UseActorClassesForHitMarkers == 0 && ExplosiveHitActor)
+										{
+											PlayerCast->ShowHitMarker(ExplosiveHitActor, nullptr);
+											break;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				
+				if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+				{
+					PlayerCast->ShowHitMarker(nullptr, nullptr);
+				}
+			}
+		}
+
+		if (BulletHitMode != 0 && BulletHitModeDelay <= 0.0f)
+		{
+			ExecuteHitFunction(OwningPlayer);
+		}
+
+		SpawnHitParticleEffect(DefaultHitEffect, HitLocation, Hit.ImpactNormal.Rotation(), Hit, UseCurrentLocationForHit);
+
+		if (DestructionSphereToSpawn && CanCrumbleDestructibleMeshes == true)
+		{
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.bNoFail = true;
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+			GetWorld()->SpawnActor<AActor>(DestructionSphereToSpawn, FTransform(HitLocation.Rotation(), HitLocation + (Hit.ImpactNormal * -3.0f), DestructionSphereSize), SpawnParams);
 		}
 	}
 
-	Destroy();
-
 	RegisteredHit = true;
+
+	MulticastSilenceBulletWhizzingSound();
+
+	if (BulletHitMode == 0 || BulletHitModeDelay <= 0.0f)
+	{
+		DestroySelf();
+	}
+
+	MulticastSoftDestroyProjectile();
+
 	ProjectileMesh->OnComponentHit.RemoveDynamic(this, &AMultiplayerProjectile::OnProjectileMeshHit);
 }
 
-void AMultiplayerProjectile::SpawnHitParticleEffect(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit)
+void AMultiplayerProjectile::DetermineBeginPlayDespawnTimer()
 {
-	if (HasAuthority())
+	if (TimeToDespawnProjectile > 0.0f)
 	{
-		MulticastSpawnHitParticleEffect(ParticleEffect, ImpactPoint, ImpactRotation, Hit);
-	}
-	else
-	{
-		ServerSpawnHitParticleEffect(ParticleEffect, ImpactPoint, ImpactRotation, Hit);
+		if (IsExplosive == true)
+		{
+			BeginPlayExplosionTimerDelegate.BindUFunction(this, "Explode", nullptr, true);
+			GetWorldTimerManager().SetTimer(BeginPlayDespawnTimerHandle, BeginPlayExplosionTimerDelegate, TimeToDespawnProjectile, false, TimeToDespawnProjectile);
+		}
+		else
+		{
+			GetWorldTimerManager().SetTimer(BeginPlayDespawnTimerHandle, this, &AMultiplayerProjectile::DestroySelf, TimeToDespawnProjectile, false, TimeToDespawnProjectile);
+		}
 	}
 }
 
-void AMultiplayerProjectile::ServerSpawnHitParticleEffect_Implementation(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit)
+void AMultiplayerProjectile::DetermineBulletHitModeDelay()
+{
+	if (BulletHitModeDelay > 0.0f)
+	{
+		BulletHitModeTimerDelegate.BindUFunction(this, "ExecuteHitFunction", OwningPlayer, nullptr);
+		GetWorldTimerManager().SetTimer(BulletHitModeTimerHandle, BulletHitModeTimerDelegate, BulletHitModeDelay, false, BulletHitModeDelay);
+	}
+}
+
+void AMultiplayerProjectile::ExecuteHitFunction_Implementation(AActor* ParentPlayer, AActor* HitActor)
+{
+	if (RegisteredHit == true)
+	{
+		DestroySelf();
+	}
+}
+
+void AMultiplayerProjectile::SoftDestroyProjectile()
+{
+	if (HasAuthority())
+	{
+		MulticastSoftDestroyProjectile();
+	}
+	else
+	{
+		ServerSoftDestroyProjectile();
+	}
+}
+
+void AMultiplayerProjectile::ServerSoftDestroyProjectile_Implementation()
+{
+	MulticastSoftDestroyProjectile();
+}
+
+void AMultiplayerProjectile::MulticastSoftDestroyProjectile_Implementation()
+{
+	if (ProjectileMesh)
+	{
+		ProjectileMesh->SetSimulatePhysics(false);
+		ProjectileMesh->SetHiddenInGame(true);
+		ProjectileMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		ProjectileMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		ProjectileMovement->Deactivate();
+	}
+}
+
+void AMultiplayerProjectile::SpawnHitParticleEffect(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit, bool UseCurrentLocationForHit)
+{
+	if (HasAuthority())
+	{
+		if (UseCurrentLocationForHit == true)
+		{
+			FHitResult HitResult;
+			MulticastSpawnHitParticleEffect(ParticleEffect, ImpactPoint, FRotator::ZeroRotator, HitResult);
+		}
+		else
+		{
+			MulticastSpawnHitParticleEffect(ParticleEffect, ImpactPoint, ImpactRotation, Hit);
+		}
+	}
+	else
+	{
+		if (UseCurrentLocationForHit == true)
+		{
+			FHitResult HitResult;
+			ServerSpawnHitParticleEffect(ParticleEffect, ImpactPoint, FRotator::ZeroRotator, HitResult);
+		}
+		else
+		{
+			ServerSpawnHitParticleEffect(ParticleEffect, ImpactPoint, ImpactRotation, Hit);
+		}
+	}
+}
+
+void AMultiplayerProjectile::ServerSpawnHitParticleEffect_Implementation(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit, bool UseCurrentLocationForHit)
 {
 	MulticastSpawnHitParticleEffect(ParticleEffect, ImpactPoint, ImpactRotation, Hit);
 }
 
-void AMultiplayerProjectile::MulticastSpawnHitParticleEffect_Implementation(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit)
+void AMultiplayerProjectile::MulticastSpawnHitParticleEffect_Implementation(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit, bool UseCurrentLocationForHit)
 {
 	if (ParticleEffect)
 	{
-		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ParticleEffect, ImpactPoint);
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ParticleEffect, ImpactPoint, ImpactRotation, HitEffectScale);
 	}
 
 	USoundBase* ChosenHitSound;
 
-	int HitSoundIndex;
 	TArray<USoundBase*> HitSounds;
 	TArray<UPhysicalMaterial*> HitPhysicalMaterials;
 
@@ -178,6 +478,7 @@ void AMultiplayerProjectile::MulticastSpawnHitParticleEffect_Implementation(UPar
 
 	if (HitPhysicalMaterials.Contains(HitPhysicalMaterial))
 	{
+		int HitSoundIndex;
 		HitSoundIndex = HitPhysicalMaterials.Find(HitPhysicalMaterial);
 
 		if (HitSounds.IsValidIndex(HitSoundIndex))
@@ -199,9 +500,13 @@ void AMultiplayerProjectile::MulticastSpawnHitParticleEffect_Implementation(UPar
 		UGameplayStatics::PlaySoundAtLocation(GetWorld(), ChosenHitSound, ImpactPoint);
 	}
 
+	if (BulletHitControllerVibration)
+	{
+		UGameplayStatics::SpawnForceFeedbackAtLocation(GetWorld(), BulletHitControllerVibration, ImpactPoint, FRotator::ZeroRotator, false, 1.0f, 0.0f, BulletHitControllerVibrationAttenuation);
+	}
+
 	UMaterialInterface* ChosenDecal;
 
-	int DecalIndex;
 	TArray<UMaterialInterface*> DecalMaterials;
 	TArray<UPhysicalMaterial*> DecalPhysicalMaterials;
 
@@ -210,6 +515,7 @@ void AMultiplayerProjectile::MulticastSpawnHitParticleEffect_Implementation(UPar
 
 	if (DecalPhysicalMaterials.Contains(HitPhysicalMaterial))
 	{
+		int DecalIndex;
 		DecalIndex = DecalPhysicalMaterials.Find(HitPhysicalMaterial);
 
 		if (DecalMaterials.IsValidIndex(DecalIndex))
@@ -232,6 +538,32 @@ void AMultiplayerProjectile::MulticastSpawnHitParticleEffect_Implementation(UPar
 	}
 }
 
+void AMultiplayerProjectile::SilenceBulletWhizzingSound()
+{
+	if (HasAuthority())
+	{
+		MulticastSilenceBulletWhizzingSound();
+	}
+	else
+	{
+		ServerSilenceBulletWhizzingSound();
+	}
+}
+
+void AMultiplayerProjectile::ServerSilenceBulletWhizzingSound_Implementation()
+{
+	MulticastSilenceBulletWhizzingSound();
+}
+
+void AMultiplayerProjectile::MulticastSilenceBulletWhizzingSound_Implementation()
+{
+	if (BulletWhizzingSoundComponent)
+	{
+		BulletWhizzingSoundComponent->SetVolumeMultiplier(0.0f);
+		BulletWhizzingSoundComponent->Deactivate();
+	}
+}
+
 void AMultiplayerProjectile::SetOwningPlayer(APawn* NewOwningPlayer)
 {
 	if (NewOwningPlayer)
@@ -245,6 +577,46 @@ APawn* AMultiplayerProjectile::GetOwningPlayer()
 	return OwningPlayer;
 }
 
+void AMultiplayerProjectile::SetLaunchPhysicsObjects(bool NewLaunchPhysicsObjects)
+{
+	LaunchPhysicsObjects = NewLaunchPhysicsObjects;
+}
+
+bool AMultiplayerProjectile::GetLaunchPhysicsObjects()
+{
+	return LaunchPhysicsObjects;
+}
+
+void AMultiplayerProjectile::SetLaunchObjectStrength(float NewLaunchObjectStrength)
+{
+	LaunchObjectStrength = NewLaunchObjectStrength;
+
+	if (RadialForceComponent)
+	{
+		RadialForceComponent->ImpulseStrength = NewLaunchObjectStrength;
+	}
+}
+
+float AMultiplayerProjectile::GetLaunchObjectStrength()
+{
+	return LaunchObjectStrength;
+}
+
+void AMultiplayerProjectile::SetLaunchObjectVelocityChange(bool NewLaunchObjectVelocityChange)
+{
+	LaunchObjectVelocityChange = NewLaunchObjectVelocityChange;
+
+	if (RadialForceComponent)
+	{
+		RadialForceComponent->bImpulseVelChange = NewLaunchObjectVelocityChange;
+	}
+}
+
+bool AMultiplayerProjectile::GetLaunchObjectVelocityChange()
+{
+	return LaunchObjectVelocityChange;
+}
+
 void AMultiplayerProjectile::SetIsExplosive(bool NewIsExplosive)
 {
 	IsExplosive = NewIsExplosive;
@@ -255,14 +627,14 @@ bool AMultiplayerProjectile::GetIsExplosive()
 	return IsExplosive;
 }
 
-void AMultiplayerProjectile::SetExplosionScale(FVector NewExplosionScale)
+void AMultiplayerProjectile::SetHitEffectScale(FVector NewHitEffectScale)
 {
-	ExplosionScale = NewExplosionScale;
+	HitEffectScale = NewHitEffectScale;
 }
 
-FVector AMultiplayerProjectile::GetExplosionScale()
+FVector AMultiplayerProjectile::GetHitEffectScale()
 {
-	return ExplosionScale;
+	return HitEffectScale;
 }
 
 void AMultiplayerProjectile::SetExplosionIgnoredActors(TArray<AActor*> NewExplosionIgnoredActors)
@@ -285,6 +657,16 @@ TArray<TSubclassOf<AActor>> AMultiplayerProjectile::GetExplosionIgnoredClasses()
 	return ExplosionIgnoredClasses;
 }
 
+void AMultiplayerProjectile::SetTimeToDespawnProjectile(float NewTimeToDespawnProjectile)
+{
+	TimeToDespawnProjectile = NewTimeToDespawnProjectile;
+}
+
+float AMultiplayerProjectile::GetTimeToDespawnProjectile()
+{
+	return TimeToDespawnProjectile;
+}
+
 void AMultiplayerProjectile::SetDefaultDamage(float NewDefaultDamage)
 {
 	DefaultDamage = NewDefaultDamage;
@@ -295,34 +677,14 @@ float AMultiplayerProjectile::GetDefaultDamage()
 	return DefaultDamage;
 }
 
-void AMultiplayerProjectile::SetHeadDamage(float NewHeadDamage)
+void AMultiplayerProjectile::SetDamage(TMap<UPhysicalMaterial*, float> NewDamage)
 {
-	HeadDamage = NewHeadDamage;
+	Damage = NewDamage;
 }
 
-float AMultiplayerProjectile::GetHeadDamage()
+TMap<UPhysicalMaterial*, float> AMultiplayerProjectile::GetDamage()
 {
-	return HeadDamage;
-}
-
-void AMultiplayerProjectile::SetTorsoDamage(float NewTorsoDamage)
-{
-	TorsoDamage = NewTorsoDamage;
-}
-
-float AMultiplayerProjectile::GetTorsoDamage()
-{
-	return TorsoDamage;
-}
-
-void AMultiplayerProjectile::SetLegDamage(float NewLegDamage)
-{
-	LegDamage = NewLegDamage;
-}
-
-float AMultiplayerProjectile::GetLegDamage()
-{
-	return LegDamage;
+	return Damage;
 }
 
 void AMultiplayerProjectile::SetExplosionIgnoreOwner(bool NewExplosionIgnoreOwner)
@@ -335,9 +697,34 @@ bool AMultiplayerProjectile::GetExplosionIgnoreOwner()
 	return ExplosionIgnoreOwner;
 }
 
+void AMultiplayerProjectile::SetBulletHitMode(int NewBulletHitMode)
+{
+	BulletHitMode = NewBulletHitMode;
+}
+
+int AMultiplayerProjectile::GetBulletHitMode()
+{
+	return BulletHitMode;
+}
+
+void AMultiplayerProjectile::SetBulletHitModeDelay(float NewBulletHitModeDelay)
+{
+	BulletHitModeDelay = NewBulletHitModeDelay;
+}
+
+float AMultiplayerProjectile::GetBulletHitModeDelay()
+{
+	return BulletHitModeDelay;
+}
+
 void AMultiplayerProjectile::SetExplosiveDamageRadius(float NewExplosiveDamageRadius)
 {
 	ExplosiveDamageRadius = NewExplosiveDamageRadius;
+
+	if (RadialForceComponent)
+	{
+		RadialForceComponent->Radius = NewExplosiveDamageRadius;
+	}
 }
 
 float AMultiplayerProjectile::GetExplosiveDamageRadius()
@@ -355,6 +742,16 @@ bool AMultiplayerProjectile::GetExplosiveDoFullDamage()
 	return ExplosiveDoFullDamage;
 }
 
+void AMultiplayerProjectile::SetExplosiveCollisionChannel(TEnumAsByte<ECollisionChannel> NewExplosiveCollisionChannel)
+{
+	ExplosiveCollisionChannel = NewExplosiveCollisionChannel;
+}
+
+TEnumAsByte<ECollisionChannel> AMultiplayerProjectile::GetExplosiveCollisionChannel()
+{
+	return ExplosiveCollisionChannel;
+}
+
 void AMultiplayerProjectile::SetHitDirection(FVector NewHitDirection)
 {
 	HitDirection = NewHitDirection;
@@ -365,16 +762,6 @@ FVector AMultiplayerProjectile::GetHitDirection()
 	return HitDirection;
 }
 
-void AMultiplayerProjectile::SetBloodEffect(UParticleSystem* NewBloodEffect)
-{
-	Blood = NewBloodEffect;
-}
-
-UParticleSystem* AMultiplayerProjectile::GetBloodEffect()
-{
-	return Blood;
-}
-
 void AMultiplayerProjectile::SetDefaultHitEffect(UParticleSystem* NewDefaultHitEffect)
 {
 	DefaultHitEffect = NewDefaultHitEffect;
@@ -383,6 +770,16 @@ void AMultiplayerProjectile::SetDefaultHitEffect(UParticleSystem* NewDefaultHitE
 UParticleSystem* AMultiplayerProjectile::GetDefaultHitEffect()
 {
 	return DefaultHitEffect;
+}
+
+void AMultiplayerProjectile::SetHitEffects(TMap<UPhysicalMaterial*, UParticleSystem*> NewHitEffects)
+{
+	HitEffects = NewHitEffects;
+}
+
+TMap<UPhysicalMaterial*, UParticleSystem*> AMultiplayerProjectile::GetHitEffects()
+{
+	return HitEffects;
 }
 
 void AMultiplayerProjectile::SetDefaultBulletHitSound(USoundBase* NewDefaultBulletHitSound)
@@ -455,10 +852,103 @@ bool AMultiplayerProjectile::GetWhizzingSoundVolumeBasedOnSpeed()
 	return WhizzingSoundVolumeBasedOnSpeed;
 }
 
+void AMultiplayerProjectile::SetUseActorClassesForHitMarkers(int NewUseActorClassesForHitMarkers)
+{
+	UseActorClassesForHitMarkers = NewUseActorClassesForHitMarkers;
+}
+
+int AMultiplayerProjectile::GetUseActorClassesForHitMarkers()
+{
+	return UseActorClassesForHitMarkers;
+}
+
+void AMultiplayerProjectile::SetHitMarkerActorSounds(TMap<TSubclassOf<AActor>, USoundBase*> NewHitMarkerActorSounds)
+{
+	HitMarkerActorSounds = NewHitMarkerActorSounds;
+}
+
+TMap<TSubclassOf<AActor>, USoundBase*> AMultiplayerProjectile::GetHitMarkerActorSounds()
+{
+	return HitMarkerActorSounds;
+}
+
+void AMultiplayerProjectile::SetHitMarkerSurfaceSounds(TMap<UPhysicalMaterial*, USoundBase*> NewHitMarkerSurfaceSounds)
+{
+	HitMarkerSurfaceSounds = NewHitMarkerSurfaceSounds;
+}
+
+TMap<UPhysicalMaterial*, USoundBase*> AMultiplayerProjectile::GetHitMarkerSurfaceSounds()
+{
+	return HitMarkerSurfaceSounds;
+}
+
+void AMultiplayerProjectile::SetCanCrumbleDestructibleMeshes(bool NewCanCrumbleDestructibleMeshes)
+{
+	CanCrumbleDestructibleMeshes = NewCanCrumbleDestructibleMeshes;
+}
+
+bool AMultiplayerProjectile::GetCanCrumbleDestructibleMeshes()
+{
+	return CanCrumbleDestructibleMeshes;
+}
+
+void AMultiplayerProjectile::SetDestructionSphereSize(FVector NewDestructionSphereSize)
+{
+	DestructionSphereSize = NewDestructionSphereSize;
+}
+
+FVector AMultiplayerProjectile::GetDestructionSphereSize()
+{
+	return DestructionSphereSize;
+}
+
+void AMultiplayerProjectile::SetDestructionSphereToSpawn(TSubclassOf<AActor> NewDestructionSphereToSpawn)
+{
+	DestructionSphereToSpawn = NewDestructionSphereToSpawn;
+}
+
+TSubclassOf<AActor> AMultiplayerProjectile::GetDestructionSphereToSpawn()
+{
+	return DestructionSphereToSpawn;
+}
+
+void AMultiplayerProjectile::SetBulletHitControllerVibration(UForceFeedbackEffect* NewBulletHitControllerVibration)
+{
+	BulletHitControllerVibration = NewBulletHitControllerVibration;
+}
+
+UForceFeedbackEffect* AMultiplayerProjectile::GetBulletHitControllerVibration()
+{
+	return BulletHitControllerVibration;
+}
+
+void AMultiplayerProjectile::SetBulletHitControllerVibrationAttenuation(UForceFeedbackAttenuation* NewBulletHitControllerVibrationAttenuation)
+{
+	BulletHitControllerVibrationAttenuation = NewBulletHitControllerVibrationAttenuation;
+}
+
+UForceFeedbackAttenuation* AMultiplayerProjectile::GetBulletHitControllerVibrationAttenuation()
+{
+	return BulletHitControllerVibrationAttenuation;
+}
+
+void AMultiplayerProjectile::SetBulletHitControllerVibrationTag(FName NewBulletHitControllerVibrationTag)
+{
+	BulletHitControllerVibrationTag = NewBulletHitControllerVibrationTag;
+}
+
+FName AMultiplayerProjectile::GetBulletHitControllerVibrationTag()
+{
+	return BulletHitControllerVibrationTag;
+}
+
 // Called when the game starts or when spawned
 void AMultiplayerProjectile::BeginPlay()
 {
 	Super::BeginPlay();
+
+	GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerProjectile::DetermineBulletHitModeDelay);
+	GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerProjectile::DetermineBeginPlayDespawnTimer);
 }
 
 // Called every frame
@@ -480,7 +970,7 @@ void AMultiplayerProjectile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty
 
 	DOREPLIFETIME(AMultiplayerProjectile, OwningPlayer);
 	DOREPLIFETIME(AMultiplayerProjectile, IsExplosive);
-	DOREPLIFETIME(AMultiplayerProjectile, ExplosionScale);
+	DOREPLIFETIME(AMultiplayerProjectile, HitEffectScale);
 	DOREPLIFETIME(AMultiplayerProjectile, RegisteredHit);
 	DOREPLIFETIME(AMultiplayerProjectile, DefaultBulletHitSound);
 }

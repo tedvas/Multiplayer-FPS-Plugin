@@ -90,7 +90,10 @@ void AMultiplayerBulletCasing::OnCasingHit(UPrimitiveComponent* HitComponent, AA
 
 	if (SoundToPlay && SoundVolume > 0)
 	{
-		UGameplayStatics::PlaySoundAtLocation(GetWorld(), SoundToPlay, GetActorLocation(), SoundVolume);
+		// Apparently this makes the plugin not package
+		//UGameplayStatics::PlaySoundAtLocation(GetWorld(), SoundToPlay, GetActorLocation(), SoundVolume);
+
+		PlayCasingHitSound_BP(SoundToPlay, SoundVolume);
 	}
 }
 
