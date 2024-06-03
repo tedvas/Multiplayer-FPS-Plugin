@@ -1,0 +1,36 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.4",
+	"Category": "",
+	"Description": "",
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		},
+		{
+			"Name": "MultiplayerFPS",
+			"Enabled": true,
+			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/061176d2d7b34d289510d98672dddc2a"
+		},
+		{
+			"Name": "WinDualShock",
+			"Enabled": true,
+			"SupportedTargetPlatforms": [
+				"Win64"
+			]
+		},
+		{
+			"Name": "RawInput",
+			"Enabled": true
+		}
+	],
+	"TargetPlatforms": [
+		"Linux",
+		"LinuxArm64",
+		"Windows"
+	]
+}
