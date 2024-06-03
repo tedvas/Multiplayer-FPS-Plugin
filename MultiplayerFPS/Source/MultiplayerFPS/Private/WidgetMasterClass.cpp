@@ -4,10 +4,20 @@
 
 AMultiplayerCharacter* UWidgetMasterClass::UIGetMultiplayerCharacter()
 {
-	return Cast<AMultiplayerCharacter>(GetOwningPlayerPawn());
+	if (!MultiplayerCharacter)
+	{
+		MultiplayerCharacter = Cast<AMultiplayerCharacter>(GetOwningPlayerPawn());
+	}
+
+	return MultiplayerCharacter;
 }
 
 AMultiplayerPlayerController* UWidgetMasterClass::UIGetMultiplayerController()
 {
-	return Cast<AMultiplayerPlayerController>(GetOwningPlayer());
+	if (!MultiplayerController)
+	{
+		MultiplayerController = Cast<AMultiplayerPlayerController>(GetOwningPlayer());
+	}
+
+	return MultiplayerController;
 }

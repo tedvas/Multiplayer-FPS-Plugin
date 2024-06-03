@@ -15,9 +15,17 @@ class MULTIPLAYERFPS_API UWidgetMasterClass : public UUserWidget
 	
 public:
 
-	UFUNCTION(BlueprintCallable, BlueprintPure)
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	AMultiplayerCharacter* UIGetMultiplayerCharacter();
 
-	UFUNCTION(BlueprintCallable, BlueprintPure)
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	AMultiplayerPlayerController* UIGetMultiplayerController();
+
+protected:
+
+	UPROPERTY()
+	AMultiplayerCharacter* MultiplayerCharacter;
+
+	UPROPERTY()
+	AMultiplayerPlayerController* MultiplayerController;
 };

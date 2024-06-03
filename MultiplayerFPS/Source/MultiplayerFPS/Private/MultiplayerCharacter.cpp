@@ -1,4 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
+// the reason you'll see weird parenthesis on if statements is for linux compatibility
 
 #include "MultiplayerCharacter.h"
 #include "Kismet/GameplayStatics.h"
@@ -8,6 +9,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "MultiplayerPlayerController.h"
 #include "TimerManager.h"
+#include "Engine/Engine.h"
 
 // Sets default values
 AMultiplayerCharacter::AMultiplayerCharacter()
@@ -17,10 +19,17 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 
 
 	/* ************* Components ************* */
-	FPCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("First Person Camera Component"));
-	FPCameraComponent->SetupAttachment(RootComponent, NAME_None);
+	SpringArmParent = RootComponent;
+
+	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("Spring Arm"));
+	SpringArm->SetupAttachment(SpringArmParent);
+	SpringArm->SetRelativeLocation(FVector(0.0f, 0.0f, 68.0f));
+	SpringArm->TargetArmLength = 0.0f;
+	SpringArm->bUsePawnControlRotation = true;
+	CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("First Person Camera Component"));
+	CameraComponent->SetupAttachment(SpringArm, NAME_None);
 	ArmsMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Arms Mesh"));
-	ArmsMesh->SetupAttachment(FPCameraComponent, NAME_None);
+	ArmsMesh->SetupAttachment(CameraComponent, NAME_None);
 
 
 	/* ************* Actor Components ************* */
@@ -28,6 +37,7 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 
 
 	/* ************* Sensitivity ************* */
+	FieldOfView = 90.0f;
 	MouseDefaultSensitivityX = 0.5f;
 	MouseAimingSensitivityX = 0.275f;
 	CurrentMouseSensitivityX = 0.5f;
@@ -42,28 +52,19 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	GamepadAimingSensitivityY = 0.275f;
 	CurrentGamepadSensitivityY = 0.5f;
 	GamepadAimingSensitivityMultiplier = 0.55f;
-
-
-	/* ************* Settings ************* */
-	FieldOfView = 90.0f;
-	CurrentFOV = 90.0f;
-	UseAimSensitivityMultipler = true;
 	ToggleAim = false;
 	HoldButtonToJump = false;
+	UseAimSensitivityMultipler = true;
 
-
-	/* ************* Interact ************* */
+	IMC_Priority = 0;
+	CurrentFOV = 90.0f;
 	CanInteract = true;
 	InteractDistance = 175.0f;
-	OverlappingWeapon = false;
-
-
-	/* ************* Weapons ************* */
+	OverlappingInteractable = false;
 	CanShoot = true;
 	ShootingCancelsReload = true;
 	CurrentWeaponIndex = 0;
-	DropWeaponsOnDeath = true;
-	TimeToSwitchWeapons = 0.9f;
+	DropWeaponsOnDeath = 2;
 	IsSwitchingWeapons = false;
 	CanReload = true;
 	IsReloading = false;
@@ -75,30 +76,47 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	IsADSing = false;
 	IsZoomedIn = false;
 	UseADS = 0;
-
-
-	/* ************* Input ************* */
-	IMC_Priority = 0;
-
-
-	/* ************* Animations ************* */
+	CanGetHitMarkersOnSelf = false;
 	HeadSocketName = "head";
 	CameraHeadLocation = FVector(2.0f, 7.5f, 0.0f);
 	CameraHeadRotation = FRotator(0.0f, 90.0f, -90.0f);
-	RespawnDelay = 2.5f;
-	DelayToDestroyBody = 10.0f;
-	UseTwoWeaponSwitchAnimations = true;
-
+	DelayToDestroyBody = 15.0f;
+	TakeDamageControllerVibrationTag = "Take Damage";
+	DieControllerVibrationTag = "Die";
 
 	bReplicates = true;
 }
 
+void AMultiplayerCharacter::ApplySettings()
+{
+	SetupInput();
+	SetSensitivity();
+	SetFOV_BP(FieldOfView);
+}
+
 UMultiplayerHealthComponent* AMultiplayerCharacter::GetHealthComponent()
 {
-	return HealthComponent;
+	if (HealthComponent)
+	{
+		return HealthComponent;
+	}
+	else
+	{
+		return nullptr;
+	}
+}
+
+UPrimitiveComponent* AMultiplayerCharacter::GetPlayerModelMesh_Implementation()
+{
+	return GetMesh();
 }
 
 void AMultiplayerCharacter::SetupInput_Implementation()
+{
+	ClientSetupInput();
+}
+
+void AMultiplayerCharacter::ClientSetupInput_Implementation()
 {
 	if (OwningController)
 	{
@@ -111,6 +129,11 @@ void AMultiplayerCharacter::SetupInput_Implementation()
 
 void AMultiplayerCharacter::RemoveInput_Implementation()
 {
+	ClientRemoveInput();
+}
+
+void AMultiplayerCharacter::ClientRemoveInput_Implementation()
+{
 	if (OwningController)
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(OwningController->GetLocalPlayer()))
@@ -122,29 +145,40 @@ void AMultiplayerCharacter::RemoveInput_Implementation()
 
 void AMultiplayerCharacter::GetOwningController_Implementation()
 {
-	// Because this is running on the client it is okay for the player index to be 0
 	if (APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), PlayerIndex))
 	{
 		OwningController = PlayerController;
 
+		if (GetWorldTimerManager().IsTimerActive(GetPlayerControllerTimerHandle))
+		{
+			GetWorldTimerManager().ClearTimer(GetPlayerControllerTimerHandle);
+		}
+
 		if (AMultiplayerPlayerController* MultiplayerController = Cast<AMultiplayerPlayerController>(OwningController))
 		{
 			PlayerIndex = MultiplayerController->GetPlayerIndex();
-		}
-		else
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "MultiplayerPlayerController Cast Failed, If You Are Not Using The MultiplayerPlayerController You Can Ignore This; MultiplayerCharacter.cpp:GetOwningController");
+			MultiplayerController->ApplySettingsToCharacter();
 		}
 	}
 	else
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Failed To Get Player Controller; MultiplayerCharacter.cpp:GetOwningController");
+		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::GetOwningController);
+
+		if (!GetWorldTimerManager().IsTimerActive(GetPlayerControllerTimerHandle))
+		{
+			GetWorldTimerManager().SetTimer(GetPlayerControllerTimerHandle, this, &AMultiplayerCharacter::PrintStringForOwningControllerInvalid, 10.0f, false, 10.0f);
+		}
 	}
+}
+
+void AMultiplayerCharacter::PrintStringForOwningControllerInvalid()
+{
+	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Owning Controller Invalid After Trying On Tick For 10 Seconds, Still Retrying MultiplayerCharacter.cpp:GetOwningController_Implementation");
 }
 
 void AMultiplayerCharacter::RecalculateBaseEyeHeight()
 {
-	BaseEyeHeight = FPCameraComponent->GetRelativeLocation().Z;
+	BaseEyeHeight = CameraComponent->GetRelativeLocation().Z + SpringArm->GetRelativeLocation().Z;
 }
 
 void AMultiplayerCharacter::Move(const FInputActionValue& Value)
@@ -229,12 +263,7 @@ void AMultiplayerCharacter::SetSensitivity()
 
 void AMultiplayerCharacter::Interact()
 {
-	if (!HasAuthority())
-	{
-		ServerInteract();
-	}
-
-	if (CanInteract == true)
+	if (CanInteract == true && GetHealthComponent()->GetHealth() > 0)
 	{
 		FVector EyeLocation;
 		FRotator EyeRotation;
@@ -261,19 +290,82 @@ void AMultiplayerCharacter::Interact()
 
 			if (AInteractableItem* InteractableItemCast = Cast<AInteractableItem>(HitActor))
 			{
-				PickupItem(InteractableItemCast);
+				if (InteractableItemCast->RunInteractOnServer == true)
+				{
+					ServerInteract(InteractableItemCast, InteractableItemCast->MulticastInteract);
+				}
+
+				if (InteractableItemCast->RunInteractOnClient == true)
+				{
+					ClientInteract(InteractableItemCast);
+				}
+
+				if (InteractableItemCast->RunInteractOnServer == false && InteractableItemCast->MulticastInteract == false && InteractableItemCast->RunInteractOnClient == false)
+				{
+					InteractReplicated(InteractableItemCast);
+				}
 			}
 		}
-		else if (OverlappingWeapon == true && WeaponBeingOverlapped)
+		else if (OverlappingInteractable == true && InteractableBeingOverlapped)
 		{
-			PickupItem(WeaponBeingOverlapped);
+			AMultiplayerGun* GunCast = Cast<AMultiplayerGun>(InteractableBeingOverlapped);
+
+			if (!GunCast)
+			{
+				if (InteractableBeingOverlapped->RunInteractOnServer == true)
+				{
+					ServerInteract(InteractableBeingOverlapped, InteractableBeingOverlapped->MulticastInteract);
+				}
+
+				if (InteractableBeingOverlapped->RunInteractOnClient == true)
+				{
+					ClientInteract(InteractableBeingOverlapped);
+				}
+			}
+
+			if ((InteractableBeingOverlapped->RunInteractOnServer == false && InteractableBeingOverlapped->MulticastInteract == false && InteractableBeingOverlapped->RunInteractOnClient == false) || GunCast)
+			{
+				InteractReplicated(InteractableBeingOverlapped);
+			}
 		}
 	}
 }
 
-void AMultiplayerCharacter::ServerInteract_Implementation()
+void AMultiplayerCharacter::InteractReplicated(AInteractableItem* Interactable)
 {
-	Interact();
+	if (CanInteract == true && Interactable && GetHealthComponent()->GetHealth() > 0)
+	{
+		if (AMultiplayerGun* GunCast = Cast<AMultiplayerGun>(Interactable))
+		{
+			PickupItem(GunCast);
+		}
+		else
+		{
+			Interactable->Interact(this);
+		}
+	}
+}
+
+void AMultiplayerCharacter::ServerInteract_Implementation(AInteractableItem* Interactable, bool Multicast)
+{
+	if (Multicast == true)
+	{
+		MulticastInteract(Interactable);
+	}
+	else
+	{
+		InteractReplicated(Interactable);
+	}
+}
+
+void AMultiplayerCharacter::MulticastInteract_Implementation(AInteractableItem* Interactable)
+{
+	InteractReplicated(Interactable);
+}
+
+void AMultiplayerCharacter::ClientInteract_Implementation(AInteractableItem* Interactable)
+{
+	InteractReplicated(Interactable);
 }
 
 void AMultiplayerCharacter::PickupItem(AInteractableItem* ItemToPickup)
@@ -281,6 +373,7 @@ void AMultiplayerCharacter::PickupItem(AInteractableItem* ItemToPickup)
 	if (!HasAuthority())
 	{
 		ServerPickupItem(ItemToPickup);
+		return;
 	}
 
 	if (ItemToPickup)
@@ -291,7 +384,10 @@ void AMultiplayerCharacter::PickupItem(AInteractableItem* ItemToPickup)
 
 			if (GetAmountOfWeapons() >= GetMaxWeaponAmount())
 			{
-				RemoveWeapon(false, false, GetWeapon(true));
+				if (AMultiplayerGun* Weapon = GetWeapon(true))
+				{
+					RemoveWeapon(false, false, Weapon);
+				}
 			}
 
 			GiveWeapon(nullptr, GunCast, true);
@@ -342,28 +438,55 @@ float AMultiplayerCharacter::GetInteractDistance()
 	return InteractDistance;
 }
 
-void AMultiplayerCharacter::SetOverlappingWeapon(bool NewOverlappingWeapon)
+void AMultiplayerCharacter::SetOverlappingInteractable(bool NewOverlappingInteractable)
 {
-	OverlappingWeapon = NewOverlappingWeapon;
+	OverlappingInteractable = NewOverlappingInteractable;
 }
 
-bool AMultiplayerCharacter::GetOverlappingWeapon()
+bool AMultiplayerCharacter::GetOverlappingInteractable()
 {
-	return OverlappingWeapon;
+	return OverlappingInteractable;
 }
 
-void AMultiplayerCharacter::SetWeaponBeingOverlapped(AMultiplayerGun* NewWeaponBeingOverlapped)
+void AMultiplayerCharacter::SetInteractableBeingOverlapped(AInteractableItem* NewInteractableBeingOverlapped)
 {
-	WeaponBeingOverlapped = NewWeaponBeingOverlapped;
+	InteractableBeingOverlapped = NewInteractableBeingOverlapped;
 }
 
-AMultiplayerGun* AMultiplayerCharacter::GetWeaponBeingOverlapped()
+AInteractableItem* AMultiplayerCharacter::GetInteractableBeingOverlapped()
 {
-	return WeaponBeingOverlapped;
+	return InteractableBeingOverlapped;
+}
+
+void AMultiplayerCharacter::OnTakeDamage(int OldHealth, int NewHealth)
+{
+	OnTakeDamage_BP(OldHealth, NewHealth);
+	ClientOnTakeDamage(OldHealth, NewHealth);
+}
+
+void AMultiplayerCharacter::ClientOnTakeDamage_Implementation(int OldHealth, int NewHealth)
+{
+	if (OldHealth > NewHealth)
+	{
+		if (OwningController)
+		{
+			OwningController->ClientStartCameraShake(TakeDamageCameraShake);
+
+			if (TakeDamageControllerVibration)
+			{
+				if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(OwningController))
+				{
+					ControllerCast->VibrateController(TakeDamageControllerVibration, TakeDamageControllerVibrationTag);
+				}
+			}
+		}
+	}
 }
 
 void AMultiplayerCharacter::Die()
 {
+	StopAiming();
+
 	Die1();
 }
 
@@ -374,35 +497,40 @@ void AMultiplayerCharacter::Die1()
 		ServerDie1();
 	}
 
-	if (GetMesh())
+	if (GetPlayerModelMesh())
 	{
 		ArmsMesh->SetHiddenInGame(true);
 		ArmsMesh->SetVisibility(false);
 
-		FPCameraComponent->bUsePawnControlRotation = false;
-		FPCameraComponent->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepWorldTransform, HeadSocketName);
-		FPCameraComponent->SetRelativeLocationAndRotation(CameraHeadLocation, CameraHeadRotation);
+		SpringArm->bUsePawnControlRotation = false;
+		SpringArm->AttachToComponent(GetPlayerModelMesh(), FAttachmentTransformRules::KeepWorldTransform, HeadSocketName);
+		SpringArm->SetRelativeLocationAndRotation(CameraHeadLocation, CameraHeadRotation);
 
-		GetMesh()->SetSimulatePhysics(true);
-		GetMesh()->SetOwnerNoSee(false);
+		GetPlayerModelMesh()->SetSimulatePhysics(true);
+		GetPlayerModelMesh()->SetOwnerNoSee(false);
 	}
 
 	if (GetController())
 	{
 		if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(GetController()))
 		{
-			if (RespawnDelay > DelayToDestroyBody)
+			if (ControllerCast->GetRespawnDelay() > DelayToDestroyBody && DelayToDestroyBody > 0.0f)
 			{
-				DelayToDestroyBody = RespawnDelay;
+				DelayToDestroyBody = ControllerCast->GetRespawnDelay();
 			}
 
-			ControllerCast->Respawn(RespawnDelay);
+			ControllerCast->Respawn(ControllerCast->GetRespawnDelay());
 		}
 	}
 
-	if (DropWeaponsOnDeath == true)
+	if (DropWeaponsOnDeath == 2)
 	{
 		RemoveWeapon(true);
+	}
+	else if (DropWeaponsOnDeath == 1 && GetWeapon())
+	{
+		RemoveWeapon(false, false, GetWeapon());
+		RemoveWeapon(true, true);
 	}
 	else
 	{
@@ -411,7 +539,10 @@ void AMultiplayerCharacter::Die1()
 
 	GetHealthComponent()->DestroyComponent();
 
-	GetWorldTimerManager().SetTimer(DestroySelfTimerHandle, this, &AMultiplayerCharacter::DestroySelf, DelayToDestroyBody, false, DelayToDestroyBody);
+	if (DelayToDestroyBody > 0.0f)
+	{
+		GetWorldTimerManager().SetTimer(DestroySelfTimerHandle, this, &AMultiplayerCharacter::DestroySelf, DelayToDestroyBody, false, DelayToDestroyBody);
+	}
 }
 
 void AMultiplayerCharacter::ServerDie1_Implementation()
@@ -430,8 +561,15 @@ void AMultiplayerCharacter::ClientDie_Implementation()
 			if (ControllerCast->DeathScreenClass)
 			{
 				ControllerCast->CreateUIWidget(ControllerCast->DeathScreenClass, 0, false, ControllerCast->HUD);
+
+				if (DieControllerVibration)
+				{
+					ControllerCast->VibrateController(DieControllerVibration, DieControllerVibrationTag);
+				}
 			}
 		}
+
+		OwningController->ClientStartCameraShake(DieDamageCameraShake);
 	}
 }
 
@@ -477,9 +615,127 @@ TArray<AMultiplayerGun*> AMultiplayerCharacter::GetAllWeapons()
 	return AllWeapons;
 }
 
+void AMultiplayerCharacter::SetAllSharedCalibers(TMap<FName, int32> NewAllSharedCalibers)
+{
+	AllSharedCalibers = NewAllSharedCalibers;
+}
+
+TMap<FName, int32> AMultiplayerCharacter::GetAllSharedCalibers()
+{
+	return AllSharedCalibers;
+}
+
+TArray<FName> AMultiplayerCharacter::GetAllSharedCaliberNames()
+{
+	TArray<FName> SharedCaliberNames;
+	GetAllSharedCalibers().GenerateKeyArray(SharedCaliberNames);
+
+	return SharedCaliberNames;
+}
+
+void AMultiplayerCharacter::SetSharedCaliberName(int32 Index, FName NewName)
+{
+	TMap<FName, int32> NewAllSharedCalibers;
+	TArray<FName> AllCaliberNames;
+	TArray<int32> AllCaliberAmounts;
+
+	GetAllSharedCalibers().GenerateKeyArray(AllCaliberNames);
+	GetAllSharedCalibers().GenerateValueArray(AllCaliberAmounts);
+
+	if (!AllCaliberNames.IsValidIndex(Index))
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Index Invalid MultiplayerCharacter.cpp:SetSharedCaliberName");
+		return;
+	}
+
+	for (int32 i = 0; i != GetAllSharedCalibers().Num(); ++i)
+	{
+		if (i == Index)
+		{
+			NewAllSharedCalibers.Add(NewName, AllCaliberAmounts[i]);
+		}
+		else
+		{
+			NewAllSharedCalibers.Add(AllCaliberNames[i], AllCaliberAmounts[i]);
+		}
+	}
+
+	SetAllSharedCalibers(NewAllSharedCalibers);
+}
+
+FName AMultiplayerCharacter::GetSharedCaliberName(int32 Index)
+{
+	TArray<FName> SharedCaliberNames;
+	GetAllSharedCalibers().GenerateKeyArray(SharedCaliberNames);
+
+	if (SharedCaliberNames.IsValidIndex(Index))
+	{
+		return SharedCaliberNames[Index];
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Index Invalid MultiplayerCharacter.cpp:GetSharedCaliberName");
+		return "N/A";
+	}
+}
+
+void AMultiplayerCharacter::SetSharedCaliberAmount(int32 Index, int32 NewAmount)
+{
+	TMap<FName, int32> NewAllSharedCalibers;
+	TArray<FName> AllCaliberNames;
+	TArray<int32> AllCaliberAmounts;
+
+	GetAllSharedCalibers().GenerateKeyArray(AllCaliberNames);
+	GetAllSharedCalibers().GenerateValueArray(AllCaliberAmounts);
+
+	if (!AllCaliberAmounts.IsValidIndex(Index))
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Index Invalid MultiplayerCharacter.cpp:SetSharedCaliberAmount");
+		return;
+	}
+
+	for (int32 i = 0; i != GetAllSharedCalibers().Num(); ++i)
+	{
+		if (i == Index)
+		{
+			NewAllSharedCalibers.Add(AllCaliberNames[i], NewAmount);
+		}
+		else
+		{
+			NewAllSharedCalibers.Add(AllCaliberNames[i], AllCaliberAmounts[i]);
+		}
+	}
+
+	SetAllSharedCalibers(NewAllSharedCalibers);
+}
+
+TArray<int32> AMultiplayerCharacter::GetAllSharedCaliberAmounts()
+{
+	TArray<int32> SharedCaliberAmounts;
+	GetAllSharedCalibers().GenerateValueArray(SharedCaliberAmounts);
+
+	return SharedCaliberAmounts;
+}
+
+int32 AMultiplayerCharacter::GetSharedCaliberAmount(int32 Index)
+{
+	TArray<int32> SharedCaliberAmounts;
+	GetAllSharedCalibers().GenerateValueArray(SharedCaliberAmounts);
+
+	if (SharedCaliberAmounts.IsValidIndex(Index))
+	{
+		return SharedCaliberAmounts[Index];
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Index Invalid MultiplayerCharacter.cpp:GetSharedCaliberAmount");
+		return -1;
+	}
+}
+
 AMultiplayerGun* AMultiplayerCharacter::GetWeapon(bool GetCurrentWeapon, int WeaponIndex)
 {
-	if (GetAmountOfWeapons() >= 1)
+	if (GetAmountOfWeapons() > 0)
 	{
 		if (GetCurrentWeapon == true || WeaponIndex <= -1)
 		{
@@ -512,7 +768,7 @@ AMultiplayerGun* AMultiplayerCharacter::GetWeapon(bool GetCurrentWeapon, int Wea
 
 int AMultiplayerCharacter::GetWeaponIndex(AMultiplayerGun* Weapon)
 {
-	if (GetAmountOfWeapons() >= 1)
+	if (GetAmountOfWeapons() > 0)
 	{
 		if (AllWeapons.Contains(Weapon))
 		{
@@ -544,36 +800,20 @@ int AMultiplayerCharacter::GetMaxWeaponAmount()
 		}
 		else
 		{
-			if (HasAuthority())
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Host: Controller Cast Failed MultiplayerCharacter.cpp:GetMaxWeaponAmount");
-			}
-			else
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Client: Controller Cast Failed MultiplayerCharacter.cpp:GetMaxWeaponAmount");
-			}
-
 			return -1;
 		}
 	}
 	else
 	{
-		if (HasAuthority())
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Host: OwningController Invalid Failed MultiplayerCharacter.cpp:GetMaxWeaponAmount");
-		}
-		else
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Client: OwningController Invalid Failed MultiplayerCharacter.cpp:GetMaxWeaponAmount");
-		}
-
 		return -1;
 	}
 }
 
 void AMultiplayerCharacter::SetWeaponVisibility(int WeaponVisibilityToChange, bool Visible, bool SetAllOtherWeaponsToOppositeVisibility)
 {
-	if (GetAmountOfWeapons() >= 1 && AllWeapons.Contains(GetWeapon(false, WeaponVisibilityToChange)) == true)
+	AMultiplayerGun* WeaponToCheck = GetWeapon(false, WeaponVisibilityToChange);
+
+	if (GetAmountOfWeapons() > 0 && AllWeapons.Contains(WeaponToCheck) == true)
 	{
 		if (SetAllOtherWeaponsToOppositeVisibility == true)
 		{
@@ -581,20 +821,79 @@ void AMultiplayerCharacter::SetWeaponVisibility(int WeaponVisibilityToChange, bo
 			{
 				if (Index != WeaponVisibilityToChange)
 				{
-					GetWeapon(false, Index)->SetActorHiddenInGame(Visible);
+					if (AMultiplayerGun* Weapon = GetWeapon(false, Index))
+					{
+						Weapon->SetActorHiddenInGame(Visible);
+					}
 				}
 			}
 		}
 
-		GetWeapon(false, WeaponVisibilityToChange)->SetActorHiddenInGame(!Visible);
+		if (AMultiplayerGun* Weapon = GetWeapon(false, WeaponVisibilityToChange))
+		{
+			Weapon->SetActorHiddenInGame(!Visible);
+		}
 	}
 }
 
 void AMultiplayerCharacter::GiveLoadout(TArray<TSubclassOf<AMultiplayerGun>> Loadout, int MaxWeaponAmount)
 {
-	for (auto& Weapon : Loadout)
+	if (!HasAuthority())
 	{
-		if (GetAmountOfWeapons() < MaxWeaponAmount && Weapon)
+		ServerGiveLoadout(Loadout, MaxWeaponAmount);
+		return;
+	}
+
+	TArray<TSubclassOf<AMultiplayerGun>> WeaponsToGive = Loadout;
+
+	if (Loadout.Num() <= GetMaxWeaponAmount() && OwningController)
+	{
+		if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(OwningController))
+		{
+			TArray<TSubclassOf<AMultiplayerGun>> AllPossibleWeapons = ControllerCast->AllWeaponClasses;
+
+			if (ControllerCast->GetRandomizeUnselectedWeapons() == true)
+			{
+				if ((ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() < AllPossibleWeapons.Num()) || ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 2)
+				{
+					for (auto& Weapon : WeaponsToGive)
+					{
+						if (Weapon)
+						{
+							AllPossibleWeapons.Remove(Weapon);
+						}
+					}
+				}
+
+				for (int32 Index = Loadout.Num(); Index != GetMaxWeaponAmount(); ++Index)
+				{
+					int RandomWeaponIndex = FMath::RandRange(0, AllPossibleWeapons.Num() - 1);
+
+					if (AllPossibleWeapons.IsValidIndex(RandomWeaponIndex))
+					{
+						WeaponsToGive.Add(AllPossibleWeapons[RandomWeaponIndex]);
+
+						if (ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() < AllPossibleWeapons.Num())
+						{
+							AllPossibleWeapons.RemoveAt(RandomWeaponIndex);
+						}
+						else if (ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() >= AllPossibleWeapons.Num() && GetAmountOfWeapons() < GetMaxWeaponAmount())
+						{
+							AllPossibleWeapons = ControllerCast->AllWeaponClasses;
+						}
+						else if (ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 2)
+						{
+							AllPossibleWeapons.RemoveAt(RandomWeaponIndex);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	for (auto& Weapon : WeaponsToGive)
+	{
+		if (GetAmountOfWeapons() <= MaxWeaponAmount && Weapon)
 		{
 			GiveWeapon(Weapon, nullptr);
 		}
@@ -603,9 +902,14 @@ void AMultiplayerCharacter::GiveLoadout(TArray<TSubclassOf<AMultiplayerGun>> Loa
 	SwitchWeapons(0);
 }
 
+void AMultiplayerCharacter::ServerGiveLoadout_Implementation(const TArray<TSubclassOf<AMultiplayerGun>>& Loadout, int MaxWeaponAmount)
+{
+	GiveLoadout(Loadout, MaxWeaponAmount);
+}
+
 void AMultiplayerCharacter::GiveWeapon_Implementation(TSubclassOf<AMultiplayerGun> WeaponToSpawn, AMultiplayerGun* WeaponToPickup, bool SwitchToNewWeapon)
 {
-	if (GetAmountOfWeapons() < GetMaxWeaponAmount())
+	if (GetAmountOfWeapons() <= GetMaxWeaponAmount())
 	{
 		if (WeaponToSpawn)
 		{
@@ -654,10 +958,6 @@ void AMultiplayerCharacter::MulticastAddWeapon_Implementation(AMultiplayerGun* W
 	if (Weapon)
 	{
 		AllWeapons.Add(Weapon);
-	}
-	else
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Weapon To Add Not Valid FirstPersonCharacterCPP.cpp:AddWeapon");
 	}
 }
 
@@ -792,6 +1092,23 @@ void AMultiplayerCharacter::MulticastRemoveWeapon_Implementation(bool RemoveAllW
 	}
 }
 
+void AMultiplayerCharacter::RemoveWeaponPastIndex(int WeaponIndex, bool DestroyWeapon)
+{
+	if (WeaponIndex <= 0)
+	{
+		RemoveWeapon(true, DestroyWeapon);
+	}
+	else if (GetAmountOfWeapons() + 1 >= WeaponIndex)
+	{
+		int WeaponAmount = GetAmountOfWeapons();
+
+		for (int32 Index = WeaponIndex; Index != WeaponAmount; ++Index)
+		{
+			RemoveWeapon(false, DestroyWeapon, nullptr, WeaponIndex);
+		}
+	}
+}
+
 void AMultiplayerCharacter::SwitchWeaponsInput(const FInputActionValue& Value)
 {
 	float InputValue = Value.Get<float>();
@@ -834,9 +1151,28 @@ void AMultiplayerCharacter::MulticastNextWeapon_Implementation()
 		StopFiring(true);
 		StopAiming();
 
-		if (WeaponSwitchAnimation)
+		float WeaponSwitchAnimationTime = 0.9f;
+
+		if (GetWeapon())
 		{
-			ArmsMesh->PlayAnimation(WeaponSwitchAnimation, false);
+			if (GetWeapon()->WeaponSwitchAnimation)
+			{
+				ArmsMesh->PlayAnimation(GetWeapon()->WeaponSwitchAnimation, false);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->SwitchOffGunAnimation && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+			{
+				GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->SwitchOffGunAnimation, false);
+			}
 		}
 
 		if (CurrentWeaponIndex >= GetAmountOfWeapons() - 1)
@@ -853,7 +1189,7 @@ void AMultiplayerCharacter::MulticastNextWeapon_Implementation()
 			IsSwitchingWeapons = true;
 
 			SwitchWeaponsTimerDelegate.BindUFunction(this, "SwitchWeapons", CurrentWeaponIndex, nullptr);
-			GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, SwitchWeaponsTimerDelegate, TimeToSwitchWeapons / 2, false);
+			GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, SwitchWeaponsTimerDelegate, WeaponSwitchAnimationTime, false);
 		}
 		else
 		{
@@ -891,9 +1227,28 @@ void AMultiplayerCharacter::MulticastLastWeapon_Implementation()
 		StopFiring(true);
 		StopAiming();
 
-		if (WeaponSwitchAnimation)
+		float WeaponSwitchAnimationTime = 0.9f;
+
+		if (GetWeapon())
 		{
-			ArmsMesh->PlayAnimation(WeaponSwitchAnimation, false);
+			if (GetWeapon()->WeaponSwitchAnimation)
+			{
+				ArmsMesh->PlayAnimation(GetWeapon()->WeaponSwitchAnimation, false);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->SwitchOffGunAnimation && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+			{
+				GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->SwitchOffGunAnimation, false);
+			}
 		}
 
 		if (CurrentWeaponIndex <= 0)
@@ -910,7 +1265,7 @@ void AMultiplayerCharacter::MulticastLastWeapon_Implementation()
 			IsSwitchingWeapons = true;
 
 			SwitchWeaponsTimerDelegate.BindUFunction(this, "SwitchWeapons", CurrentWeaponIndex, nullptr);
-			GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, SwitchWeaponsTimerDelegate, TimeToSwitchWeapons / 2, false);
+			GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, SwitchWeaponsTimerDelegate, WeaponSwitchAnimationTime, false);
 		}
 		else
 		{
@@ -939,7 +1294,7 @@ void AMultiplayerCharacter::ServerSwitchWeapons_Implementation(int Index, AMulti
 
 void AMultiplayerCharacter::MulticastSwitchWeapons_Implementation(int Index, AMultiplayerGun* WeaponToSwitchTo)
 {
-	if (GetAmountOfWeapons() >= 1)
+	if (GetAmountOfWeapons() > 0)
 	{
 		SetCanShoot(false);
 		SetCanAim(false);
@@ -947,9 +1302,28 @@ void AMultiplayerCharacter::MulticastSwitchWeapons_Implementation(int Index, AMu
 		StopAiming();
 		CancelReload(false);
 
-		if (UseTwoWeaponSwitchAnimations == true && WeaponSwitchAnimation1)
+		float WeaponSwitchAnimationTime = 0.9f;
+
+		if (GetWeapon())
 		{
-			ArmsMesh->PlayAnimation(WeaponSwitchAnimation1, false);
+			if (GetWeapon()->UseTwoWeaponSwitchAnimations == true && GetWeapon()->WeaponSwitchAnimation1)
+			{
+				ArmsMesh->PlayAnimation(GetWeapon()->WeaponSwitchAnimation1, false);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation1->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->SwitchToGunAnimation && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+			{
+				GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->SwitchToGunAnimation, false);
+			}
 		}
 
 		if (!WeaponToSwitchTo)
@@ -964,11 +1338,14 @@ void AMultiplayerCharacter::MulticastSwitchWeapons_Implementation(int Index, AMu
 		if (AMultiplayerGun* Gun = GetWeapon(true))
 		{
 			ArmsMesh->SetRelativeLocationAndRotation(Gun->GetPlayerArmsRelativeLocation(), Gun->GetPlayerArmsRelativeRotation());
+			UseActorClassesForHitMarkers = Gun->GetUseActorClassesForHitMarkers();
+			HitMarkerActorSounds = Gun->GetHitMarkerActorSounds();
+			HitMarkerSurfaceSounds = Gun->GetHitMarkerSurfaceSounds();
 		}
 
 		SetWeaponVisibility(CurrentWeaponIndex, true);
 
-		GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, this, &AMultiplayerCharacter::SwitchWeapons1, TimeToSwitchWeapons / 2, false, TimeToSwitchWeapons / 2);
+		GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, this, &AMultiplayerCharacter::SwitchWeapons1, WeaponSwitchAnimationTime, false, WeaponSwitchAnimationTime);
 	}
 }
 
@@ -993,25 +1370,20 @@ void AMultiplayerCharacter::MulticastSwitchWeapons1_Implementation()
 {
 	IsSwitchingWeapons = false;
 
-	if (GetAmountOfWeapons() >= 1)
+	if (GetAmountOfWeapons() > 0)
 	{
-		ArmsMesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+		SetArmsAnimationMode();
 
 		SetCanShoot(true);
 		SetCanAim(true);
 
-		if (GetWeapon(true))
+		if (AMultiplayerGun* Weapon = GetWeapon(true))
 		{
-			if (GetWeapon(true)->GetAmmoInMagazine() <= 0)
+			if (Weapon->GetAmmoInMagazine() <= 0 && Weapon->GetInfiniteAmmo() != 2)
 			{
-				if (ReloadAnimation)
-				{
-					ArmsMesh->PlayAnimation(ReloadAnimation, false);
-				}
-
 				Reload();
 			}
-			else if (GetWeapon(true)->GetFireMode() != 0 && HoldingFireInput == true)
+			else if (Weapon->GetFireMode() != 0 && HoldingFireInput == true)
 			{
 				Fire();
 			}
@@ -1040,17 +1412,20 @@ void AMultiplayerCharacter::ReleaseFireInput()
 
 void AMultiplayerCharacter::Fire()
 {
-	if (GetAmountOfWeapons() >= 1)
+	if (GetAmountOfWeapons() > 0)
 	{
-		if (GetCanShoot() == true && GetWeapon(true))
+		if (GetCanShoot() == true)
 		{
-			if (GetWeapon(true)->GetAmmoInMagazine() >= 1)
+			if (AMultiplayerGun* Weapon = GetWeapon(true))
 			{
-				if (ShootingCancelsReload == true || IsReloading == false)
+				if (Weapon->GetAmmoInMagazine() > 0 || Weapon->GetInfiniteAmmo() == 2)
 				{
-					CancelReload();
+					if (ShootingCancelsReload == true || IsReloading == false)
+					{
+						CancelReload();
 
-					GetWeapon(true)->FireInput();
+						Weapon->FireInput();
+					}
 				}
 			}
 		}
@@ -1059,9 +1434,12 @@ void AMultiplayerCharacter::Fire()
 
 void AMultiplayerCharacter::StopFiring(bool EvenCancelBurst)
 {
-	if (GetWeapon(true))
+	for (auto& Weapon : GetAllWeapons())
 	{
-		GetWeapon(true)->StopFiring(EvenCancelBurst);
+		if (Weapon)
+		{
+			Weapon->StopFiring(EvenCancelBurst);
+		}
 	}
 }
 
@@ -1100,48 +1478,97 @@ void AMultiplayerCharacter::ReleaseAimInput()
 
 void AMultiplayerCharacter::Aim()
 {
-	if (CanAim == true && IsAiming == false && GetWeapon(true))
+	if (CanAim == true && IsAiming == false)
 	{
-		if (AimingCancelsReload == true || IsReloading == false)
+		if (AMultiplayerGun* CurrentWeapon = GetWeapon(true))
 		{
-			CancelReload();
-
-			IsAiming = true;
-
-			SetSensitivity();
-
-			AMultiplayerGun* CurrentWeapon = GetWeapon(true);
-
-			FVector AimLocation;
-			FRotator AimRotation;
-
-			if (UseADS == 0 && CurrentWeapon->GetUseADS() == 0 || CurrentWeapon->GetUseADS() == 2 || UseADS == 1 && CurrentWeapon->GetUseADS() < 2)
+			if (AimingCancelsReload == true || IsReloading == false)
 			{
-				IsADSing = true;
+				FVector AimLocation;
+				FRotator AimRotation;
 
-				AimLocation = CurrentWeapon->GetADSArmsLocation();
-				AimRotation = CurrentWeapon->GetADSArmsRotation();
+				if ((UseADS == 0 && CurrentWeapon->GetUseADS() == 0) || CurrentWeapon->GetUseADS() == 2 || (UseADS == 1 && CurrentWeapon->GetUseADS() < 2))
+				{
+					AimLocation = CurrentWeapon->GetADSArmsLocation();
+					AimRotation = CurrentWeapon->GetADSArmsRotation();
 
-				SetAimingFOV_BP(true, FieldOfView - GetWeapon(true)->GetADSFOV(), GetWeapon(true)->GetTimeToADS());
+					if (CurrentWeapon->GetDivideAimingFOV() == true)
+					{
+						SetAimingFOV_BP(true, FieldOfView / CurrentWeapon->GetADSFOV(), CurrentWeapon->GetTimeToADS());
+					}
+					else
+					{
+						SetAimingFOV_BP(true, FieldOfView - CurrentWeapon->GetADSFOV(), CurrentWeapon->GetTimeToADS());
+					}
 
-				FLatentActionInfo LatentActionInfo;
-				LatentActionInfo.CallbackTarget = this;
+					FLatentActionInfo LatentActionInfo;
+					LatentActionInfo.CallbackTarget = this;
 
-				UKismetSystemLibrary::MoveComponentTo(ArmsMesh, AimLocation, AimRotation, false, false, CurrentWeapon->GetTimeToADS(), false, EMoveComponentAction::Move, LatentActionInfo);
+					UKismetSystemLibrary::MoveComponentTo(ArmsMesh, AimLocation, AimRotation, false, false, CurrentWeapon->GetTimeToADS(), false, EMoveComponentAction::Move, LatentActionInfo);
+				}
+				else
+				{
+					AimLocation = CurrentWeapon->GetZoomArmsLocation();
+					AimRotation = CurrentWeapon->GetZoomArmsRotation();
+
+					if (CurrentWeapon->GetDivideAimingFOV() == true)
+					{
+						SetAimingFOV_BP(true, FieldOfView / CurrentWeapon->GetZoomFOV(), CurrentWeapon->GetTimeToZoom());
+					}
+					else
+					{
+						SetAimingFOV_BP(true, FieldOfView - CurrentWeapon->GetZoomFOV(), CurrentWeapon->GetTimeToZoom());
+					}
+
+					FLatentActionInfo LatentActionInfo;
+					LatentActionInfo.CallbackTarget = this;
+
+					UKismetSystemLibrary::MoveComponentTo(ArmsMesh, AimLocation, AimRotation, false, false, CurrentWeapon->GetTimeToZoom(), false, EMoveComponentAction::Move, LatentActionInfo);
+				}
 			}
-			else
+		}
+	}
+
+	if (HasAuthority())
+	{
+		MulticastAim();
+	}
+	else
+	{
+		ServerAim();
+	}
+}
+
+void AMultiplayerCharacter::ServerAim_Implementation()
+{
+	MulticastAim();
+}
+
+void AMultiplayerCharacter::MulticastAim_Implementation()
+{
+	if (CanAim == true && IsAiming == false)
+	{
+		if (AMultiplayerGun* CurrentWeapon = GetWeapon(true))
+		{
+			if (AimingCancelsReload == true || IsReloading == false)
 			{
-				IsZoomedIn = true;
+				CancelReload();
 
-				AimLocation = CurrentWeapon->GetZoomArmsLocation();
-				AimRotation = CurrentWeapon->GetZoomArmsRotation();
+				IsAiming = true;
 
-				SetAimingFOV_BP(true, FieldOfView - GetWeapon(true)->GetZoomFOV(), GetWeapon(true)->GetTimeToZoom());
+				SetSensitivity();
 
-				FLatentActionInfo LatentActionInfo;
-				LatentActionInfo.CallbackTarget = this;
+				FVector AimLocation;
+				FRotator AimRotation;
 
-				UKismetSystemLibrary::MoveComponentTo(ArmsMesh, AimLocation, AimRotation, false, false, CurrentWeapon->GetTimeToZoom(), false, EMoveComponentAction::Move, LatentActionInfo);
+				if ((UseADS == 0 && CurrentWeapon->GetUseADS() == 0) || CurrentWeapon->GetUseADS() == 2 || (UseADS == 1 && CurrentWeapon->GetUseADS() < 2))
+				{
+					IsADSing = true;
+				}
+				else
+				{
+					IsZoomedIn = true;
+				}
 			}
 		}
 	}
@@ -1149,7 +1576,64 @@ void AMultiplayerCharacter::Aim()
 
 void AMultiplayerCharacter::StopAiming()
 {
-	if (GetWeapon(true))
+	if (AMultiplayerGun* CurrentWeapon = GetWeapon(true))
+	{
+		if (IsAiming == true || IsADSing == true || IsZoomedIn == true)
+		{
+			float AimTime;
+
+			if ((UseADS == 0 && CurrentWeapon->GetUseADS() == 0) || CurrentWeapon->GetUseADS() == 2 || (UseADS == 1 && CurrentWeapon->GetUseADS() < 2))
+			{
+				AimTime = CurrentWeapon->GetTimeToADS();
+
+				if (CurrentWeapon->GetDivideAimingFOV() == true)
+				{
+					SetAimingFOV_BP(false, FieldOfView / CurrentWeapon->GetADSFOV(), AimTime);
+				}
+				else
+				{
+					SetAimingFOV_BP(false, FieldOfView - CurrentWeapon->GetADSFOV(), AimTime);
+				}
+			}
+			else
+			{
+				AimTime = CurrentWeapon->GetTimeToZoom();
+
+				if (CurrentWeapon->GetDivideAimingFOV() == true)
+				{
+					SetAimingFOV_BP(false, FieldOfView / CurrentWeapon->GetZoomFOV(), AimTime);
+				}
+				else
+				{
+					SetAimingFOV_BP(false, FieldOfView - CurrentWeapon->GetZoomFOV(), AimTime);
+				}
+			}
+
+			FLatentActionInfo LatentActionInfo;
+			LatentActionInfo.CallbackTarget = this;
+
+			UKismetSystemLibrary::MoveComponentTo(ArmsMesh, CurrentWeapon->GetPlayerArmsRelativeLocation(), CurrentWeapon->GetPlayerArmsRelativeRotation(), false, false, AimTime, false, EMoveComponentAction::Move, LatentActionInfo);
+		}
+	}
+
+	if (HasAuthority())
+	{
+		MulticastStopAiming();
+	}
+	else
+	{
+		ServerStopAiming();
+	}
+}
+
+void AMultiplayerCharacter::ServerStopAiming_Implementation()
+{
+	MulticastStopAiming();
+}
+
+void AMultiplayerCharacter::MulticastStopAiming_Implementation()
+{
+	if (AMultiplayerGun* CurrentWeapon = GetWeapon(true))
 	{
 		if (IsAiming == true || IsADSing == true || IsZoomedIn == true)
 		{
@@ -1158,26 +1642,6 @@ void AMultiplayerCharacter::StopAiming()
 			IsZoomedIn = false;
 
 			SetSensitivity();
-
-			AMultiplayerGun* CurrentWeapon = GetWeapon(true);
-
-			float AimTime;
-
-			if (UseADS == 0 && CurrentWeapon->GetUseADS() == 0 || CurrentWeapon->GetUseADS() == 2 || UseADS == 1 && CurrentWeapon->GetUseADS() < 2)
-			{
-				AimTime = CurrentWeapon->GetTimeToADS();
-				SetAimingFOV_BP(false, FieldOfView - CurrentWeapon->GetADSFOV(), AimTime);
-			}
-			else
-			{
-				AimTime = CurrentWeapon->GetTimeToZoom();
-				SetAimingFOV_BP(false, FieldOfView - CurrentWeapon->GetZoomFOV(), AimTime);
-			}
-
-			FLatentActionInfo LatentActionInfo;
-			LatentActionInfo.CallbackTarget = this;
-
-			UKismetSystemLibrary::MoveComponentTo(ArmsMesh, CurrentWeapon->GetPlayerArmsRelativeLocation(), CurrentWeapon->GetPlayerArmsRelativeRotation(), false, false, AimTime, false, EMoveComponentAction::Move, LatentActionInfo);
 		}
 	}
 }
@@ -1251,28 +1715,59 @@ void AMultiplayerCharacter::ServerReload_Implementation()
 
 void AMultiplayerCharacter::MulticastReload_Implementation()
 {
-	if (GetAmountOfWeapons() >= 1 && CanReload == true && IsReloading == false)
+	if (GetAmountOfWeapons() > 0 && CanReload == true && IsReloading == false)
 	{
-		if (GetWeapon(true))
+		if (AMultiplayerGun* Weapon = GetWeapon(true))
 		{
-			if (GetWeapon(true)->GetReserveAmmo() >= 1 && GetWeapon(true)->GetAmmoInMagazine() < GetWeapon(true)->GetMaxAmmoInMagazine())
+			if (Weapon->GetAmmoInMagazine() < Weapon->GetMaxAmmoInMagazine() && Weapon->GetInfiniteAmmo() != 2)
 			{
-				StopFiring(true);
-				StopAiming();
-
-				if (GetWeapon(true)->GetAmmoInMagazine() <= 0)
+				if ((Weapon->GetUseSharedCalibers() == false && Weapon->GetReserveAmmo() > 0) || (Weapon->GetUseSharedCalibers() == true && GetSharedCaliberAmount(Weapon->GetCaliberToUse()) > 0) || Weapon->GetInfiniteAmmo() == 1)
 				{
-					CanAim = false;
+					StopFiring(true);
+					StopAiming();
+
+					if (Weapon->GetAmmoInMagazine() <= 0)
+					{
+						CanAim = false;
+					}
+
+					IsReloading = true;
+
+					if (GetWeapon()->ReloadAnimation && GetWeapon()->GetAmmoInMagazine() > 0)
+					{
+						ArmsMesh->PlayAnimation(GetWeapon()->ReloadAnimation, false);
+					}
+					else if (GetWeapon()->ReloadEmptyAnimation && GetWeapon()->GetAmmoInMagazine() <= 0)
+					{
+						ArmsMesh->PlayAnimation(GetWeapon()->ReloadEmptyAnimation, false);
+					}
+
+					if (GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+					{
+						if (GetWeapon()->GetAmmoInMagazine() > 0 && GetWeapon()->ReloadGunAnimation)
+						{
+							GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->ReloadGunAnimation, false);
+						}
+						else if (GetWeapon()->GetAmmoInMagazine() <= 0 && GetWeapon()->ReloadEmptyGunAnimation)
+						{
+							GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->ReloadEmptyGunAnimation, false);
+						}
+					}
+
+					if (ReloadCharacterSound)
+					{
+						UGameplayStatics::SpawnSoundAttached(ReloadCharacterSound, ArmsMesh, Weapon->GetSocketName(), FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, true);
+					}
+
+					if (Weapon->ReloadSpeed > 0)
+					{
+						GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AMultiplayerCharacter::Reload1, Weapon->ReloadSpeed, false, Weapon->ReloadSpeed);
+					}
+					else
+					{
+						Reload1();
+					}
 				}
-
-				IsReloading = true;
-
-				if (ReloadAnimation)
-				{
-					ArmsMesh->PlayAnimation(ReloadAnimation, false);
-				}
-
-				GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AMultiplayerCharacter::Reload1, GetWeapon(true)->ReloadSpeed, false, GetWeapon(true)->ReloadSpeed);
 			}
 		}
 	}
@@ -1297,20 +1792,39 @@ void AMultiplayerCharacter::ServerReload1_Implementation()
 
 void AMultiplayerCharacter::MulticastReload1_Implementation()
 {
-	if (GetWeapon(true))
+	AMultiplayerGun* Weapon = GetWeapon(true);
+
+	if (Weapon)
 	{
-		GetWeapon(true)->Reload();
+		if (Weapon->UseTwoReloadAnimations == true)
+		{
+			if (Weapon->ReloadAnimation1 && Weapon->GetAmmoInMagazine() > 0)
+			{
+				ArmsMesh->PlayAnimation(Weapon->ReloadAnimation1, false);
+			}
+			else if (Weapon->ReloadEmptyAnimation1 && Weapon->GetAmmoInMagazine() <= 0)
+			{
+				ArmsMesh->PlayAnimation(Weapon->ReloadEmptyAnimation1, false);
+			}
+		}
+
+		Weapon->Reload();
 	}
 
 	IsReloading = false;
 	CanAim = true;
 
-	if (ReloadAnimation1)
+	if (Weapon)
 	{
-		ArmsMesh->PlayAnimation(ReloadAnimation1, false);
+		if (Weapon->ReloadSpeed1 > 0)
+		{
+			GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AMultiplayerCharacter::Reload2, Weapon->ReloadSpeed1, false, Weapon->ReloadSpeed1);
+		}
+		else
+		{
+			Reload2();
+		}
 	}
-
-	GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AMultiplayerCharacter::Reload2, GetWeapon(true)->ReloadSpeed1, false, GetWeapon(true)->ReloadSpeed1);
 }
 
 void AMultiplayerCharacter::Reload2()
@@ -1332,14 +1846,17 @@ void AMultiplayerCharacter::ServerReload2_Implementation()
 
 void AMultiplayerCharacter::MulticastReload2_Implementation()
 {
-	ArmsMesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	SetArmsAnimationMode();
 
 	IsReloading = false;
 	CanAim = true;
 
-	if (GetWeapon(true)->GetFireMode() != 0 && HoldingFireInput == true)
+	if (AMultiplayerGun* Weapon = GetWeapon(true))
 	{
-		Fire();
+		if (Weapon->GetFireMode() != 0 && HoldingFireInput == true)
+		{
+			Fire();
+		}
 	}
 
 	if (HoldingAimInput == true)
@@ -1380,21 +1897,151 @@ void AMultiplayerCharacter::MulticastCancelReload_Implementation(bool PutArmsBac
 	}
 }
 
+void AMultiplayerCharacter::ShowHitMarker_Implementation(AActor* HitActor, UPhysicalMaterial* HitPhysicalMaterial)
+{
+	if (GetWeapon())
+	{
+		if (GetWeapon()->GetIsExplosive())
+		{
+			UseActorClassesForHitMarkers = 0;
+		}
+	}
+
+	if (UseActorClassesForHitMarkers == 0 && HitActor)
+	{
+		if ((HitActor != this && CanGetHitMarkersOnSelf == false) || CanGetHitMarkersOnSelf == true)
+		{
+			ShowHitMarker_BP(HitActor, HitPhysicalMaterial);
+
+			TArray<TSubclassOf<AActor>> Actors;
+			TArray<USoundBase*> HitMarkerSounds;
+
+			HitMarkerActorSounds.GenerateKeyArray(Actors);
+			HitMarkerActorSounds.GenerateValueArray(HitMarkerSounds);
+
+			if (Actors.Contains(HitActor->GetClass()))
+			{
+				int SoundIndex = Actors.Find(HitActor->GetClass());
+
+				if (HitMarkerSounds.IsValidIndex(SoundIndex))
+				{
+					USoundBase* HitMarkerSound = HitMarkerSounds[SoundIndex];
+
+					if (HitMarkerSound)
+					{
+						UGameplayStatics::PlaySound2D(GetWorld(), HitMarkerSound);
+					}
+				}
+			}
+		}
+	}
+	else if (UseActorClassesForHitMarkers == 1 && HitPhysicalMaterial)
+	{
+		ShowHitMarker_BP(HitActor, HitPhysicalMaterial);
+
+		TArray<UPhysicalMaterial*> HitPhysicalMaterials;
+		TArray<USoundBase*> HitMarkerSounds;
+
+		HitMarkerSurfaceSounds.GenerateKeyArray(HitPhysicalMaterials);
+		HitMarkerSurfaceSounds.GenerateValueArray(HitMarkerSounds);
+
+		if (HitPhysicalMaterials.Contains(HitPhysicalMaterial))
+		{
+			int SoundIndex = HitPhysicalMaterials.Find(HitPhysicalMaterial);
+
+			if (HitMarkerSounds.IsValidIndex(SoundIndex))
+			{
+				USoundBase* HitMarkerSound = HitMarkerSounds[SoundIndex];
+
+				if (HitMarkerSound)
+				{
+					UGameplayStatics::PlaySound2D(GetWorld(), HitMarkerSound);
+				}
+			}
+		}
+	}
+	else if (UseActorClassesForHitMarkers == 2 && HitActor && HitPhysicalMaterial)
+	{
+		ShowHitMarker_BP(HitActor, HitPhysicalMaterial);
+
+		TArray<UPhysicalMaterial*> HitPhysicalMaterials;
+		TArray<USoundBase*> HitMarkerSounds;
+
+		HitMarkerSurfaceSounds.GenerateKeyArray(HitPhysicalMaterials);
+		HitMarkerSurfaceSounds.GenerateValueArray(HitMarkerSounds);
+
+		if (HitPhysicalMaterials.Contains(HitPhysicalMaterial))
+		{
+			int SoundIndex = HitPhysicalMaterials.Find(HitPhysicalMaterial);
+
+			if (HitMarkerSounds.IsValidIndex(SoundIndex))
+			{
+				USoundBase* HitMarkerSound = HitMarkerSounds[SoundIndex];
+
+				if (HitMarkerSound)
+				{
+					UGameplayStatics::PlaySound2D(GetWorld(), HitMarkerSound);
+				}
+			}
+		}
+		else
+		{
+			ShowHitMarker_BP(HitActor, HitPhysicalMaterial);
+
+			TArray<TSubclassOf<AActor>> Actors;
+
+			HitMarkerActorSounds.GenerateKeyArray(Actors);
+			HitMarkerActorSounds.GenerateValueArray(HitMarkerSounds);
+
+			if (Actors.Contains(HitActor->GetClass()))
+			{
+				int SoundIndex = Actors.Find(HitActor->GetClass());
+
+				if (HitMarkerSounds.IsValidIndex(SoundIndex))
+				{
+					USoundBase* HitMarkerSound = HitMarkerSounds[SoundIndex];
+
+					if (HitMarkerSound)
+					{
+						UGameplayStatics::PlaySound2D(GetWorld(), HitMarkerSound);
+					}
+				}
+			}
+		}
+	}
+}
+
+void AMultiplayerCharacter::SetArmsAnimationMode(float Delay)
+{
+	if (Delay > 0.0f)
+	{
+		GetWorldTimerManager().SetTimer(ArmsAnimationModeTimerHandle, this, &AMultiplayerCharacter::SetArmsAnimationMode1, Delay, false, Delay);
+	}
+	else
+	{
+		SetArmsAnimationMode1();
+	}
+}
+
+void AMultiplayerCharacter::SetArmsAnimationMode1()
+{
+	if (ArmsMesh)
+	{
+		ArmsMesh->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	}
+}
+
 // Called when the game starts or when spawned
 void AMultiplayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
 	RecalculateBaseEyeHeight();
-
 	GetOwningController();
-
-	SetupInput();
-
-	SetSensitivity();
 
 	if (HealthComponent)
 	{
+		GetHealthComponent()->OnTakeDamage.AddDynamic(this, &AMultiplayerCharacter::OnTakeDamage);
 		GetHealthComponent()->OnDie.AddDynamic(this, &AMultiplayerCharacter::Die);
 		GetHealthComponent()->OnDieUnreplicated.AddDynamic(this, &AMultiplayerCharacter::ClientDie);
 
@@ -1402,14 +2049,6 @@ void AMultiplayerCharacter::BeginPlay()
 		{
 			HealthComponent->SetOwningPlayerController(OwningController);
 		}
-		else
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "OwningController Invalid MultiplayerCharacter.cpp:BeginPlay");
-		}
-	}
-	else
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "HealthComponent Invalid MultiplayerCharacter.cpp:BeginPlay");
 	}
 }
 
@@ -1431,6 +2070,9 @@ void AMultiplayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(AMultiplayerCharacter, CurrentWeaponIndex);
 	DOREPLIFETIME(AMultiplayerCharacter, UseADS);
 	DOREPLIFETIME(AMultiplayerCharacter, CanAim);
+	DOREPLIFETIME(AMultiplayerCharacter, IsAiming);
+	DOREPLIFETIME(AMultiplayerCharacter, IsADSing);
+	DOREPLIFETIME(AMultiplayerCharacter, IsZoomedIn);
 }
 
 // Called to bind functionality to input
