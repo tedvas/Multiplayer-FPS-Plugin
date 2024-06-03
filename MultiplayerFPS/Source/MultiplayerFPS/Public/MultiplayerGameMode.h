@@ -16,29 +16,29 @@ public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* ExitingPlayer) override;
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void AddPlayerController(APlayerController* NewController);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void RemovePlayerController(APlayerController* ControllerToRemove, bool RemoveByIndex = false, int Index = 0);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual TArray<APlayerController*> GetAllPlayerControllers();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void AddPlayerPawn(APawn* NewPawn);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void RemovePlayerPawn(APawn* PawnToRemove, bool RemoveByIndex = false, int Index = 0);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual TArray<APawn*> GetAllPlayerPawns();
 
 protected:
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	TArray<APlayerController*> AllPlayerControllers;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	TArray<APawn*> AllPlayerPawns;
 };

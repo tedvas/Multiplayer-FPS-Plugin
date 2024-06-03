@@ -1,4 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
+// the reason you'll see weird parenthesis on if statements is for linux compatibility
 
 #include "MultiplayerPlayerController.h"
 #include "Net/UnrealNetwork.h"
@@ -7,15 +8,40 @@
 #include "MultiplayerCharacter.h"
 #include "MultiplayerGameMode.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Engine.h"
 
 AMultiplayerPlayerController::AMultiplayerPlayerController()
 {
+	FieldOfView = 90.0f;
+	MouseDefaultSensitivityX = 0.5f;
+	MouseAimingSensitivityX = 0.275f;
+	MouseDefaultSensitivityY = 0.5f;
+	MouseAimingSensitivityY = 0.275f;
+	MouseAimingSensitivityMultiplier = 0.55f;
+	GamepadDefaultSensitivityX = 0.5f;
+	GamepadAimingSensitivityX = 0.275f;
+	GamepadDefaultSensitivityY = 0.5f;
+	GamepadAimingSensitivityY = 0.275f;
+	GamepadAimingSensitivityMultiplier = 0.55f;
+	ControllerVibration = true;
+	ToggleAim = false;
+	HoldButtonToJump = false;
+	UseAimSensitivityMultipler = true;
+
 	PlayerIndex = 0;
+	UsingGamepad = false;
 	GiveLoadoutOnBeginPlay = true;
 	MaxWeaponAmount = 2;
 	RandomizeUnselectedWeapons = true;
+	AvoidDuplicatesForRandomWeapons = 2;
+	RespawnDelay = 2.5f;
 
 	bReplicates = true;
+}
+
+APawn* AMultiplayerPlayerController::GetControlledPawn()
+{
+	return K2_GetPawn();
 }
 
 void AMultiplayerPlayerController::CreateUIWidget_Implementation(TSubclassOf<UUserWidget> NewWidget, int32 ZOrder, bool RemoveAllWidgetsFirst, UUserWidget* WidgetToRemove, bool ChangeCursor, bool ShowCursor, bool ChangeInput, bool GameInput, bool ChangePaused, bool PauseGame)
@@ -46,7 +72,7 @@ void AMultiplayerPlayerController::CreateUIWidget_Implementation(TSubclassOf<UUs
 			{
 				HUD = nullptr;
 			}
-			
+
 			if (WidgetToRemove->GetClass() == DeathScreenClass)
 			{
 				DeathScreen = nullptr;
@@ -69,7 +95,7 @@ void AMultiplayerPlayerController::CreateUIWidget_Implementation(TSubclassOf<UUs
 
 		if (CreatedWidget)
 		{
-			CreatedWidget->AddToViewport(ZOrder);
+			CreatedWidget->AddToPlayerScreen(ZOrder);
 			AllUI.Add(CreatedWidget);
 
 			if (NewWidget == HUDClass)
@@ -96,7 +122,7 @@ void AMultiplayerPlayerController::CreateUIWidget_Implementation(TSubclassOf<UUs
 			}
 			else
 			{
-				UWidgetBlueprintLibrary::SetInputMode_UIOnlyEx(this, GetUILastIndex());
+				UWidgetBlueprintLibrary::SetInputMode_UIOnlyEx(this, GetUILastIndex(), EMouseLockMode::DoNotLock, true);
 			}
 		}
 
@@ -104,6 +130,10 @@ void AMultiplayerPlayerController::CreateUIWidget_Implementation(TSubclassOf<UUs
 		{
 			UGameplayStatics::SetGamePaused(GetWorld(), PauseGame);
 		}
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Please Assign NewWidget For CreateUIWidget Function To Execute");
 	}
 }
 
@@ -153,7 +183,7 @@ void AMultiplayerPlayerController::RemoveUIWidget_Implementation(UUserWidget* Wi
 		}
 		else
 		{
-			UWidgetBlueprintLibrary::SetInputMode_UIOnlyEx(this, GetUILastIndex());
+			UWidgetBlueprintLibrary::SetInputMode_UIOnlyEx(this, GetUILastIndex(), EMouseLockMode::DoNotLock, true);
 		}
 	}
 
@@ -171,7 +201,6 @@ UUserWidget* AMultiplayerPlayerController::GetUILastIndex()
 	}
 	else
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetUILastIndex returned nullptr, MultiplayerPlayerController.cpp");
 		return nullptr;
 	}
 }
@@ -184,14 +213,14 @@ void AMultiplayerPlayerController::PossessPawn(TSubclassOf<APawn> NewPawnToSpawn
 		return;
 	}
 
-	if (SpawnNewPawn == true && NewPawnToSpawn || SpawnNewPawn == false && NewPawn)
+	if ((SpawnNewPawn == true && NewPawnToSpawn) || (SpawnNewPawn == false && NewPawn))
 	{
 		FRotator CurrentControlRotation = GetControlRotation();
 		FVector CurrentVeloctiy = FVector(0.0f, 0.0f, 0.0f);
 
 		if (KeepVelocity == true)
 		{
-			if (ACharacter* CurrentCharacterCast = Cast<ACharacter>(ControlledPawn))
+			if (ACharacter* CurrentCharacterCast = Cast<ACharacter>(GetControlledPawn()))
 			{
 				CurrentVeloctiy = CurrentCharacterCast->GetCharacterMovement()->Velocity;
 			}
@@ -231,7 +260,6 @@ void AMultiplayerPlayerController::PossessPawn(TSubclassOf<APawn> NewPawnToSpawn
 
 		if (NewPawnToPossess)
 		{
-			ControlledPawn = NewPawnToPossess;
 			Possess(NewPawnToPossess);
 
 			if (KeepControlRotation == true)
@@ -243,9 +271,16 @@ void AMultiplayerPlayerController::PossessPawn(TSubclassOf<APawn> NewPawnToSpawn
 				ClientSetControlRotation(Rotation);
 			}
 
+			AMultiplayerCharacter* NewPlayerCharacterCast = Cast<AMultiplayerCharacter>(NewPawnToPossess);
+
+			if (SpawnNewPawn == true && NewPlayerCharacterCast)
+			{
+				NewPlayerCharacterCast->SetAllSharedCalibers(AllSharedCalibersOnSpawn);
+			}
+
 			if (KeepVelocity == true || ChangeStartingVelocity == true)
 			{
-				if (AMultiplayerCharacter* NewPlayerCharacterCast = Cast<AMultiplayerCharacter>(NewPawnToPossess))
+				if (NewPlayerCharacterCast)
 				{
 					if (NewPlayerCharacterCast->GetCharacterMovement())
 					{
@@ -298,6 +333,54 @@ void AMultiplayerPlayerController::ServerPossessPawn_Implementation(TSubclassOf<
 	PossessPawn(NewPawnToSpawn, NewPawn, SpawnNewPawn, Location, Rotation, DestroyOldPawn, KeepControlRotation, KeepVelocity, ChangeStartingVelocity, NewVelocity);
 }
 
+void AMultiplayerPlayerController::ApplySettingsToCharacter()
+{
+	if (GetControlledPawn())
+	{
+		if (GetWorldTimerManager().IsTimerActive(GetControlledPawnTimerHandle))
+		{
+			GetWorldTimerManager().ClearTimer(GetControlledPawnTimerHandle);
+		}
+
+		if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(GetControlledPawn()))
+		{
+			PlayerCast->FieldOfView = FieldOfView;
+			PlayerCast->MouseDefaultSensitivityX = MouseDefaultSensitivityX;
+			PlayerCast->MouseAimingSensitivityX = MouseAimingSensitivityX;
+			PlayerCast->MouseDefaultSensitivityY = MouseDefaultSensitivityY;
+			PlayerCast->MouseAimingSensitivityY = MouseAimingSensitivityY;
+			PlayerCast->MouseAimingSensitivityMultiplier = MouseAimingSensitivityMultiplier;
+			PlayerCast->GamepadDefaultSensitivityX = GamepadDefaultSensitivityX;
+			PlayerCast->GamepadAimingSensitivityX = GamepadAimingSensitivityX;
+			PlayerCast->GamepadDefaultSensitivityY = GamepadDefaultSensitivityY;
+			PlayerCast->GamepadAimingSensitivityY = GamepadAimingSensitivityY;
+			PlayerCast->GamepadAimingSensitivityMultiplier = GamepadAimingSensitivityMultiplier;
+			PlayerCast->ToggleAim = ToggleAim;
+			PlayerCast->HoldButtonToJump = HoldButtonToJump;
+			PlayerCast->UseAimSensitivityMultipler = UseAimSensitivityMultipler;
+			PlayerCast->ApplySettings();
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Player Cast Failed MultiplayerPlayerController.cpp:ApplySettingsToCharacter");
+		}
+	}
+	else
+	{
+		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerPlayerController::ApplySettingsToCharacter);
+
+		if (!GetWorldTimerManager().IsTimerActive(GetControlledPawnTimerHandle))
+		{
+			GetWorldTimerManager().SetTimer(GetControlledPawnTimerHandle, this, &AMultiplayerPlayerController::PrintStringForControlledPawnInvalidApplySettings, 10.0f, false, 10.0f);
+		}
+	}
+}
+
+void AMultiplayerPlayerController::PrintStringForControlledPawnInvalidApplySettings()
+{
+	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Controlled Pawn Invalid After Trying On Tick For 10 Seconds, Still Retrying MultiplayerPlayerController.cpp:ApplySettingsToCharacter");
+}
+
 void AMultiplayerPlayerController::ClientSetControlRotation_Implementation(FRotator Rotation)
 {
 	SetControlRotation(Rotation);
@@ -305,16 +388,12 @@ void AMultiplayerPlayerController::ClientSetControlRotation_Implementation(FRota
 
 void AMultiplayerPlayerController::GiveLoadout_Implementation()
 {
-	if (ControlledPawn)
+	if (GetControlledPawn())
 	{
-		if (AMultiplayerCharacter* NewCharacterCast = Cast<AMultiplayerCharacter>(ControlledPawn))
+		if (AMultiplayerCharacter* NewCharacterCast = Cast<AMultiplayerCharacter>(GetControlledPawn()))
 		{
 			NewCharacterCast->GiveLoadout(WeaponChoices, MaxWeaponAmount);
 		}
-	}
-	else
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Character Invalid MultiplayerPlayerController.cpp:GiveLoadout");
 	}
 }
 
@@ -324,7 +403,7 @@ void AMultiplayerPlayerController::Respawn(float DelayToRespawn)
 	{
 		GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &AMultiplayerPlayerController::Respawn1, DelayToRespawn, false, DelayToRespawn);
 
-		ShowHUDTimerDelegate.BindUFunction(this, FName("CreateUIWidget"), HUDClass, 0, false, DeathScreen, true, false, true, true, false, false);
+		ShowHUDTimerDelegate.BindUFunction(this, FName("CreateUIWidget"), HUDClass, 0, true, DeathScreen, true, false, true, true, false, false);
 		GetWorldTimerManager().SetTimer(ShowHUDTimerHandle, ShowHUDTimerDelegate, DelayToRespawn, false, DelayToRespawn);
 	}
 	else
@@ -340,7 +419,7 @@ void AMultiplayerPlayerController::Respawn1()
 		ServerRespawn1();
 	}
 
-	if (ControlledPawn)
+	if (GetControlledPawn())
 	{
 		TArray<FVector> SpawnLocations;
 		TArray<FRotator> SpawnRotations;
@@ -369,11 +448,11 @@ void AMultiplayerPlayerController::Respawn1()
 
 			if (SetRotation == true)
 			{
-				PossessPawn(ControlledPawn->GetClass(), nullptr, true, Location, Rotation, false, false);
+				PossessPawn(GetControlledPawn()->GetClass(), nullptr, true, Location, Rotation, false, false);
 			}
 			else
 			{
-				PossessPawn(ControlledPawn->GetClass(), nullptr, true, Location, FRotator::ZeroRotator, false, true);
+				PossessPawn(GetControlledPawn()->GetClass(), nullptr, true, Location, FRotator::ZeroRotator, false, true);
 			}
 		}
 	}
@@ -404,9 +483,20 @@ bool AMultiplayerPlayerController::GetGiveLoadoutOnBeginPlay()
 	return GiveLoadoutOnBeginPlay;
 }
 
-void AMultiplayerPlayerController::SetMaxWeaponAmount(int NewMaxWeaponAmount)
+void AMultiplayerPlayerController::SetMaxWeaponAmount(int NewMaxWeaponAmount, bool DestroyWeaponsInExcess)
 {
 	MaxWeaponAmount = NewMaxWeaponAmount;
+
+	if (GetControlledPawn())
+	{
+		if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(GetControlledPawn()))
+		{
+			if (PlayerCast->GetAmountOfWeapons() > NewMaxWeaponAmount)
+			{
+				PlayerCast->RemoveWeaponPastIndex(NewMaxWeaponAmount, DestroyWeaponsInExcess);
+			}
+		}
+	}
 }
 
 int AMultiplayerPlayerController::GetMaxWeaponAmount()
@@ -434,11 +524,51 @@ TMap<FVector, FRotator> AMultiplayerPlayerController::GetRespawnPoints()
 	return RespawnPoints;
 }
 
+void AMultiplayerPlayerController::SetAvoidDuplicatesForRandomWeapons(int NewAvoidDuplicatesForRandomWeapons)
+{
+	AvoidDuplicatesForRandomWeapons = NewAvoidDuplicatesForRandomWeapons;
+}
+
+int AMultiplayerPlayerController::GetAvoidDuplicatesForRandomWeapons()
+{
+	return AvoidDuplicatesForRandomWeapons;
+}
+
+void AMultiplayerPlayerController::SetRespawnDelay(float NewRespawnDelay)
+{
+	RespawnDelay = NewRespawnDelay;
+}
+
+float AMultiplayerPlayerController::GetRespawnDelay()
+{
+	return RespawnDelay;
+}
+
+void AMultiplayerPlayerController::SetControllerVibration(bool NewControllerVibration)
+{
+	ControllerVibration = NewControllerVibration;
+	bForceFeedbackEnabled = NewControllerVibration;
+}
+
+void AMultiplayerPlayerController::VibrateController(UForceFeedbackEffect* ForceFeedbackEffect, FName Tag, bool Looping, bool IgnoreTimeDilation, bool PlayWhilePaused)
+{
+	if (ControllerVibration == true && UsingGamepad == true && ForceFeedbackEffect)
+	{
+		FForceFeedbackParameters ForceFeedbackParameters;
+		ForceFeedbackParameters.Tag = Tag;
+		ForceFeedbackParameters.bLooping = Looping;
+		ForceFeedbackParameters.bIgnoreTimeDilation = IgnoreTimeDilation;
+		ForceFeedbackParameters.bPlayWhilePaused = PlayWhilePaused;
+
+		ClientPlayForceFeedback(ForceFeedbackEffect, ForceFeedbackParameters);
+	}
+}
+
 void AMultiplayerPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AMultiplayerPlayerController, PlayerIndex);
+	DOREPLIFETIME(AMultiplayerPlayerController, WeaponChoices);
 	DOREPLIFETIME(AMultiplayerPlayerController, MaxWeaponAmount);
-	DOREPLIFETIME(AMultiplayerPlayerController, ControlledPawn);
 }
