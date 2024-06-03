@@ -2,6 +2,7 @@
 
 #include "MultiplayerHealthComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Engine/World.h"
 
 // Sets default values for this component's properties
 UMultiplayerHealthComponent::UMultiplayerHealthComponent()
@@ -12,20 +13,22 @@ UMultiplayerHealthComponent::UMultiplayerHealthComponent()
 
 	Health = 100;
 	MaxHealth = 100;
+	AutoHealthRegen = true;
+	TimeToStartHealthRegen = 5.0f;
+	HealthRegenTimeBetweenTicks = 0.05f;
+	AmountOfHealthRegenPerTick = 2;
 }
 
 void UMultiplayerHealthComponent::OnDamaged(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
-	Health -= Damage;
+	GetWorld()->GetTimerManager().ClearTimer(StartHealthRegenTimerHandle);
+	GetWorld()->GetTimerManager().ClearTimer(HealthRegenTickTimerHandle);
 
-	OnHealthChanged.Broadcast(Health);
+	int OldHealth = GetHealth();
 
-	if (Health <= 0)
-	{
-		Health = 0;
+	SetHealth(GetHealth() - Damage);
 
-		Die();
-	}
+	OnTakeDamage.Broadcast(OldHealth, GetHealth());
 }
 
 void UMultiplayerHealthComponent::Die()
@@ -45,15 +48,49 @@ void UMultiplayerHealthComponent::MulticastDie_Implementation()
 	OnDie.Broadcast();
 }
 
+void UMultiplayerHealthComponent::StartHealthRegen()
+{
+	GetWorld()->GetTimerManager().ClearTimer(StartHealthRegenTimerHandle);
+	GetWorld()->GetTimerManager().ClearTimer(HealthRegenTickTimerHandle);
+
+	if (AutoHealthRegen == true)
+	{
+		HealthRegenTick();
+
+		GetWorld()->GetTimerManager().SetTimer(HealthRegenTickTimerHandle, this, &UMultiplayerHealthComponent::HealthRegenTick, HealthRegenTimeBetweenTicks, true, HealthRegenTimeBetweenTicks);
+	}
+}
+
+void UMultiplayerHealthComponent::HealthRegenTick()
+{
+	Health += AmountOfHealthRegenPerTick;
+
+	if (Health >= MaxHealth)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(StartHealthRegenTimerHandle);
+		GetWorld()->GetTimerManager().ClearTimer(HealthRegenTickTimerHandle);
+
+		Health = MaxHealth;
+	}
+
+	OnHealthChanged.Broadcast(Health, true);
+}
+
 void UMultiplayerHealthComponent::SetHealth(int NewHealth)
 {
 	Health = NewHealth;
+
+	OnHealthChanged.Broadcast(NewHealth, false);
 
 	if (Health <= 0)
 	{
 		Health = 0;
 
 		Die();
+	}
+	else
+	{
+		GetWorld()->GetTimerManager().SetTimer(StartHealthRegenTimerHandle, this, &UMultiplayerHealthComponent::StartHealthRegen, TimeToStartHealthRegen, false, TimeToStartHealthRegen);
 	}
 }
 
@@ -75,6 +112,59 @@ void UMultiplayerHealthComponent::SetMaxHealth(int NewMaxHealth)
 int UMultiplayerHealthComponent::GetMaxHealth()
 {
 	return MaxHealth;
+}
+
+void UMultiplayerHealthComponent::SetAutoHealthRegen(bool NewAutoHealthRegen)
+{
+	AutoHealthRegen = NewAutoHealthRegen;
+
+	if (NewAutoHealthRegen == true)
+	{
+		if (Health < MaxHealth)
+		{
+			GetWorld()->GetTimerManager().SetTimer(StartHealthRegenTimerHandle, this, &UMultiplayerHealthComponent::StartHealthRegen, TimeToStartHealthRegen, false, TimeToStartHealthRegen);
+		}
+	}
+	else
+	{
+		GetWorld()->GetTimerManager().ClearTimer(StartHealthRegenTimerHandle);
+		GetWorld()->GetTimerManager().ClearTimer(HealthRegenTickTimerHandle);
+	}
+}
+
+bool UMultiplayerHealthComponent::GetAutoHealthRegen()
+{
+	return AutoHealthRegen;
+}
+
+void UMultiplayerHealthComponent::SetTimeToStartHealthRegen(float NewTimeToStartHealthRegen)
+{
+	TimeToStartHealthRegen = NewTimeToStartHealthRegen;
+}
+
+float UMultiplayerHealthComponent::GetTimeToStartHealthRegen()
+{
+	return TimeToStartHealthRegen;
+}
+
+void UMultiplayerHealthComponent::SetHealthRegenTimeBetweenTicks(float NewHealthRegenTimeBetweenTicks)
+{
+	HealthRegenTimeBetweenTicks = NewHealthRegenTimeBetweenTicks;
+}
+
+float UMultiplayerHealthComponent::GetHealthRegenTimeBetweenTicks()
+{
+	return HealthRegenTimeBetweenTicks;
+}
+
+void UMultiplayerHealthComponent::SetAmountOfHealthRegenPerTick(int NewAmountOfHealthRegenPerTick)
+{
+	AmountOfHealthRegenPerTick = NewAmountOfHealthRegenPerTick;
+}
+
+int UMultiplayerHealthComponent::GetAmountOfHealthRegenPerTick()
+{
+	return AmountOfHealthRegenPerTick;
 }
 
 bool UMultiplayerHealthComponent::IsDead()
@@ -112,14 +202,6 @@ void UMultiplayerHealthComponent::BeginPlay()
 		{
 			GetOwner()->OnTakeAnyDamage.AddDynamic(this, &UMultiplayerHealthComponent::OnDamaged);
 		}
-		else
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "OwningActor Invalid MultiplayerHealthComponent.cpp:BeginPlay");
-		}
-	}
-	else
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwner() Failed MultiplayerHealthComponent.cpp:BeginPlay");
 	}
 }
 
@@ -133,8 +215,12 @@ void UMultiplayerHealthComponent::GetLifetimeReplicatedProps(TArray<FLifetimePro
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(UMultiplayerHealthComponent, Health);
-	DOREPLIFETIME(UMultiplayerHealthComponent, MaxHealth);
 	DOREPLIFETIME(UMultiplayerHealthComponent, OwningActor);
 	DOREPLIFETIME(UMultiplayerHealthComponent, OwningPlayerController);
+	DOREPLIFETIME(UMultiplayerHealthComponent, Health);
+	DOREPLIFETIME(UMultiplayerHealthComponent, MaxHealth);
+	DOREPLIFETIME(UMultiplayerHealthComponent, AutoHealthRegen);
+	DOREPLIFETIME(UMultiplayerHealthComponent, TimeToStartHealthRegen);
+	DOREPLIFETIME(UMultiplayerHealthComponent, HealthRegenTimeBetweenTicks);
+	DOREPLIFETIME(UMultiplayerHealthComponent, AmountOfHealthRegenPerTick);
 }

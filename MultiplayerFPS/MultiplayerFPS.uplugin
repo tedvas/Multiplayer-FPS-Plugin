@@ -1,15 +1,16 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "1.0",
+	"VersionName": "2.0",
 	"FriendlyName": "Multiplayer FPS",
 	"Description": "This plugin allows you to create a multiplayer first person shooter with ease.",
 	"Category": "Multiplayer FPS",
 	"CreatedBy": "vster",
-	"CreatedByURL": "",
-	"DocsURL": "",
-	"MarketplaceURL": "",
+	"CreatedByURL": "https://youtube.com/@vster7885?si=g4RrzzxSwmtzC09e",
+	"DocsURL": "https://youtube.com/playlist?list=PL5RfhyEEVNE5RVQ7L5n80hb6jE6x96UHQ&si=gwhyx_9lN-daAvbq",
+	"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/061176d2d7b34d289510d98672dddc2a",
 	"SupportURL": "",
+	"EngineVersion": "5.1.0",
 	"CanContainContent": true,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
@@ -18,7 +19,12 @@
 		{
 			"Name": "MultiplayerFPS",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Linux",
+				"LinuxArm64"
+			]
 		}
 	],
 	"Plugins": [

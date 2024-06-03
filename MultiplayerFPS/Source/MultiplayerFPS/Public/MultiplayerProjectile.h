@@ -4,8 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Components/AudioComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "PhysicsEngine/RadialForceComponent.h"
+#include "TimerManager.h"
 #include "MultiplayerProjectile.generated.h"
+
+UDELEGATE()
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnProjectileHit, AActor*, ActorHit, UPhysicalMaterial*, HitSurface);
 
 UCLASS()
 class MULTIPLAYERFPS_API AMultiplayerProjectile : public AActor
@@ -16,180 +22,315 @@ public:
 	// Sets default values for this actor's properties
 	AMultiplayerProjectile();
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UPROPERTY(BlueprintAssignable, Category = "Functions")
+	FOnProjectileHit FOnProjectileHit;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UStaticMeshComponent* ProjectileMesh;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UAudioComponent* BulletWhizzingSoundComponent;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UProjectileMovementComponent* ProjectileMovement;
 
-	UFUNCTION(BlueprintCallable)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	URadialForceComponent* RadialForceComponent;
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void DestroySelf();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void OnProjectileMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
-	UFUNCTION(BlueprintCallable, Server, Reliable)
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
 	virtual void RegisterHit(const FHitResult& Hit);
 
-	UFUNCTION(BlueprintCallable, Server, Reliable)
-	virtual void Explode();
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void Explode(const FHitResult& Hit, bool UseCurrentLocationForHit = false);
 
-	UFUNCTION(BlueprintCallable)
-	void SpawnHitParticleEffect(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit);
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void DetermineBeginPlayDespawnTimer();
 
-	UFUNCTION(BlueprintCallable, Server, Reliable)
-	void ServerSpawnHitParticleEffect(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit);
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void DetermineBulletHitModeDelay();
 
-	UFUNCTION(BlueprintCallable, NetMulticast, Reliable)
-	void MulticastSpawnHitParticleEffect(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit);
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Functions")
+	void ExecuteHitFunction(AActor* ParentPlayer = nullptr, AActor* HitActor = nullptr);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	void SpawnHitParticleEffect(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit, bool UseCurrentLocationForHit = false);
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	void ServerSpawnHitParticleEffect(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit, bool UseCurrentLocationForHit = false);
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	void MulticastSpawnHitParticleEffect(UParticleSystem* ParticleEffect, FVector ImpactPoint, FRotator ImpactRotation, FHitResult Hit, bool UseCurrentLocationForHit = false);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "This will hide the projectile if you need it to not be actually destroyed but still hidden"))
+	virtual void SoftDestroyProjectile();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerSoftDestroyProjectile();
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastSoftDestroyProjectile();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SilenceBulletWhizzingSound();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerSilenceBulletWhizzingSound();
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastSilenceBulletWhizzingSound();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetOwningPlayer(APawn* NewOwningPlayer);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual APawn* GetOwningPlayer();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetLaunchPhysicsObjects(bool NewLaunchPhysicsObjects);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetLaunchPhysicsObjects();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetLaunchObjectStrength(float NewLaunchObjectStrength);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetLaunchObjectStrength();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetLaunchObjectVelocityChange(bool NewLaunchObjectVelocityChange);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetLaunchObjectVelocityChange();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetIsExplosive(bool NewIsExplosive);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual bool GetIsExplosive();
 
-	UFUNCTION(BlueprintCallable)
-	virtual void SetExplosionScale(FVector NewExplosionScale);
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHitEffectScale(FVector NewHitEffectScale);
 
-	UFUNCTION(BlueprintCallable)
-	virtual FVector GetExplosionScale();
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FVector GetHitEffectScale();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosionIgnoredActors(TArray<AActor*> NewExplosionIgnoredActors);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual TArray<AActor*> GetExplosionIgnoredActors();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosionIgnoredClasses(TArray<TSubclassOf<AActor>> NewExplosionIgnoredClasses);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual TArray<TSubclassOf<AActor>> GetExplosionIgnoredClasses();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetTimeToDespawnProjectile(float NewTimeToDespawnProjectile);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetTimeToDespawnProjectile();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDefaultDamage(float NewDefaultDamage);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual float GetDefaultDamage();
 
-	UFUNCTION(BlueprintCallable)
-	virtual void SetHeadDamage(float NewHeadDamage);
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetDamage(TMap<UPhysicalMaterial*, float> NewDamage);
 
-	UFUNCTION(BlueprintCallable)
-	virtual float GetHeadDamage();
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TMap<UPhysicalMaterial*, float> GetDamage();
 
-	UFUNCTION(BlueprintCallable)
-	virtual void SetTorsoDamage(float NewTorsoDamage);
-
-	UFUNCTION(BlueprintCallable)
-	virtual float GetTorsoDamage();
-
-	UFUNCTION(BlueprintCallable)
-	virtual void SetLegDamage(float NewLegDamage);
-
-	UFUNCTION(BlueprintCallable)
-	virtual float GetLegDamage();
-
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosionIgnoreOwner(bool NewExplosionIgnoreOwner);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual bool GetExplosionIgnoreOwner();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetBulletHitMode(int NewBulletHitMode);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetBulletHitMode();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetBulletHitModeDelay(float NewBulletHitModeDelay);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual float GetBulletHitModeDelay();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosiveDamageRadius(float NewExplosiveDamageRadius);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual float GetExplosiveDamageRadius();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosiveDoFullDamage(bool NewExplosiveDoFullDamage);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual bool GetExplosiveDoFullDamage();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetExplosiveCollisionChannel(TEnumAsByte<ECollisionChannel> NewExplosiveCollisionChannel);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TEnumAsByte<ECollisionChannel> GetExplosiveCollisionChannel();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitDirection(FVector NewHitDirection);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual FVector GetHitDirection();
 
-	UFUNCTION(BlueprintCallable)
-	virtual void SetBloodEffect(UParticleSystem* NewBloodEffect);
-
-	UFUNCTION(BlueprintCallable)
-	virtual UParticleSystem* GetBloodEffect();
-
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDefaultHitEffect(UParticleSystem* NewDefaultHitEffect);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual UParticleSystem* GetDefaultHitEffect();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHitEffects(TMap<UPhysicalMaterial*, UParticleSystem*> NewHitEffects);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TMap<UPhysicalMaterial*, UParticleSystem*> GetHitEffects();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDefaultBulletHitSound(USoundBase* NewDefaultBulletHitSound);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual USoundBase* GetDefaultBulletHitSound();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitSounds(TMap<USoundBase*, UPhysicalMaterial*> NewBulletHitSounds);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual TMap<USoundBase*, UPhysicalMaterial*> GetBulletHitSounds();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDamageType(TSubclassOf<UDamageType> NewDamageType);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual TSubclassOf<UDamageType> GetDamageType();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDefaultBulletHitDecal(UMaterialInterface* NewBulletHitDecal);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual UMaterialInterface* GetDefaultBulletHitDecal();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitDecals(TMap<UMaterialInterface*, UPhysicalMaterial*> NewBulletHitDecals);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual TMap<UMaterialInterface*, UPhysicalMaterial*> GetBulletHitDecals();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitDecalSize(FVector NewBulletHitDecalSize);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual FVector GetBulletHitDecalSize();
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetWhizzingSoundVolumeBasedOnSpeed(bool NewWhizzingSoundVolumeBasedOnSpeed);
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual bool GetWhizzingSoundVolumeBasedOnSpeed();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetUseActorClassesForHitMarkers(int NewUseActorClassesForHitMarkers);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetUseActorClassesForHitMarkers();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHitMarkerActorSounds(TMap<TSubclassOf<AActor>, USoundBase*> NewHitMarkerActorSounds);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TMap<TSubclassOf<AActor>, USoundBase*> GetHitMarkerActorSounds();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHitMarkerSurfaceSounds(TMap<UPhysicalMaterial*, USoundBase*> NewHitMarkerSurfaceSounds);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TMap<UPhysicalMaterial*, USoundBase*> GetHitMarkerSurfaceSounds();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCanCrumbleDestructibleMeshes(bool NewCanCrumbleDestructibleMeshes);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetCanCrumbleDestructibleMeshes();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetDestructionSphereSize(FVector NewDestructionSphereSize);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FVector GetDestructionSphereSize();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetDestructionSphereToSpawn(TSubclassOf<AActor> NewDestructionSphereToSpawn);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TSubclassOf<AActor> GetDestructionSphereToSpawn();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetBulletHitControllerVibration(UForceFeedbackEffect* NewBulletHitControllerVibration);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual UForceFeedbackEffect* GetBulletHitControllerVibration();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetBulletHitControllerVibrationAttenuation(UForceFeedbackAttenuation* NewBulletHitControllerVibrationAttenuation);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual UForceFeedbackAttenuation* GetBulletHitControllerVibrationAttenuation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetBulletHitControllerVibrationTag(FName NewBulletHitControllerVibrationTag);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FName GetBulletHitControllerVibrationTag();
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	UPROPERTY(BlueprintReadWrite, Replicated)
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	APawn* OwningPlayer;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "For this to replicate you need to replicate movement for the actor you're launching"))
+	bool LaunchPhysicsObjects;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if LaunchPhysicsObjects = true", ClampMin = 0.001f))
+	float LaunchObjectStrength;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if LaunchPhysicsObjects = true"))
+	bool LaunchObjectVelocityChange;
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Damage")
 	bool IsExplosive;
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Damage")
-	FVector ExplosionScale;
+	FVector HitEffectScale;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	UPROPERTY(BlueprintReadWrite, Category = "Firing")
 	bool ExplosionIgnoreOwner;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = just apply damage, 1 = apply damage and execute ExecuteHitFunction(), 2 = just execute ExecuteHitFunction(), to use this override the ExecuteHitFunction() or add event ExecuteHitFunction, for projectiles you will need to define this function in the projectile, this function only runs on server", ClampMin = 0, ClampMax = 2))
+	int BulletHitMode;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Only applies if BulletHitMode equals 1 or 2, and works better for projectiles, set to 0 to disable", ClampMin = 0.0f))
+	float BulletHitModeDelay;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Damage")
 	TArray<AActor*> ExplosionIgnoredActors;
@@ -197,17 +338,14 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Category = "Damage")
 	TArray<TSubclassOf<AActor>> ExplosionIgnoredClasses;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Projectile", meta = (ToolTip = "This will determine the amount of time before explosive projectiles explode if they don't hit anything, 0 = disabled, only applies if UseProjectile and IsExplosive are true", ClampMin = 0.0f))
+	float TimeToDespawnProjectile;
+
 	UPROPERTY(BlueprintReadWrite, Category = "Damage")
 	float DefaultDamage;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Damage")
-	float HeadDamage;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Damage")
-	float TorsoDamage;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Damage")
-	float LegDamage;
+	UPROPERTY(BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "Add pysical materials like the head to apply different damage, if left blank it will just apply default damage"))
+	TMap<UPhysicalMaterial*, float> Damage;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Damage")
 	float ExplosiveDamageRadius;
@@ -215,14 +353,17 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Category = "Damage")
 	bool ExplosiveDoFullDamage;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	TEnumAsByte<ECollisionChannel> ExplosiveCollisionChannel;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	FVector HitDirection;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Particles")
-	UParticleSystem* Blood;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Particles")
 	UParticleSystem* DefaultHitEffect;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "Add pysical materials like the head to spawn different particle effects, if left blank it will just use the default hit effect"))
+	TMap<UPhysicalMaterial*, UParticleSystem*> HitEffects;
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Hit Effects")
 	USoundBase* DefaultBulletHitSound;
@@ -245,10 +386,43 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Sound")
 	bool WhizzingSoundVolumeBasedOnSpeed;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Sound")
 	float BulletWhizzingSoundVolume;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "0 = hit actor classes, 1 = hit physical materials, 2 = prioritize physical material but fallback on actor class, does not apply to explosives", ClampMin = 0, ClampMax = 2))
+	int UseActorClassesForHitMarkers;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "Only applies if UseActorClassesForHitMarkers = true"))
+	TMap<TSubclassOf<AActor>, USoundBase*> HitMarkerActorSounds;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Hit Effects", meta = (Tooltip = "Using the physical material allows you to have a different sound for each surface, only applies if UseActorClassesForHitMarkers = false"))
+	TMap<UPhysicalMaterial*, USoundBase*> HitMarkerSurfaceSounds;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Chaos Destruction")
+	bool CanCrumbleDestructibleMeshes;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Chaos Destruction", meta = (Tooltip = "Also set this for explosives, destruction sphere will use this not damage radius"))
+	FVector DestructionSphereSize;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Chaos Destruction", meta = (Tooltip = "This is used to destroy destructible meshes, make this either FS_MasterField or a child of it"))
+	TSubclassOf<AActor> DestructionSphereToSpawn;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This also applies to explosives, clear this to disable"))
+	UForceFeedbackEffect* BulletHitControllerVibration;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing")
+	UForceFeedbackAttenuation* BulletHitControllerVibrationAttenuation;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Firing")
+	FName BulletHitControllerVibrationTag;
 
 	UPROPERTY(Replicated)
 	bool RegisteredHit;
+
+	FTimerDelegate BulletHitModeTimerDelegate;
+	FTimerHandle BulletHitModeTimerHandle;
+	FTimerDelegate BeginPlayExplosionTimerDelegate;
+	FTimerHandle BeginPlayDespawnTimerHandle;
 
 public:	
 	// Called every frame
