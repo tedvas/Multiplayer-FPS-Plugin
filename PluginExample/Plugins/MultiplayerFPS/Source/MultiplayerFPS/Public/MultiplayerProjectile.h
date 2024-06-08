@@ -188,6 +188,30 @@ public:
 	virtual TEnumAsByte<ECollisionChannel> GetExplosiveCollisionChannel();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetDamageFalloffMultiplierAtRange(TMap<float, float> NewDamageFalloffMultiplierAtRange);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TMap<float, float> GetDamageFalloffMultiplierAtRange();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetInterpolateDamageBetweenRanges(bool NewInterpolateDamageBetweenRanges);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetInterpolateDamageBetweenRanges();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetPrintDistanceTraveled(bool NewPrintDistanceTraveled);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetPrintDistanceTraveled();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetFireLocation(FVector NewFireLocation);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual FVector GetFireLocation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitDirection(FVector NewHitDirection);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
@@ -355,6 +379,21 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Damage")
 	TEnumAsByte<ECollisionChannel> ExplosiveCollisionChannel;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "The first float is the distance traveled and the second float is the damage multiplier at that range, values above 1 do more damage, does not apply to explosives"))
+	TMap<float, float> DamageFalloffMultiplierAtRange;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "Only applies if DamageFalloffMultiplierAtRange has 2 or more values, if the target distance is in between 2 distances in the DamageFalloffMultiplierAtRange variable the damage will also be in between the 2 damages in the DamageFalloffMultiplierAtRange variable"))
+	bool InterpolateDamageBetweenRanges;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "This will print a string showing how far the bullet went"))
+	bool PrintDistanceTraveled;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Damage")
+	FVector FireLocation;
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void PrintDistanceTraved_BP(float Distance);
 
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	FVector HitDirection;

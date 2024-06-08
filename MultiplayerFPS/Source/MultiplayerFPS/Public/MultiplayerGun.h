@@ -644,9 +644,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "0 = just apply damage, 1 = apply damage and execute ExecuteHitFunction(), 2 = just execute ExecuteHitFunction(), to use this override the ExecuteHitFunction() or add event ExecuteHitFunction, for projectiles you will need to define this function in the projectile, this function only runs on server", ClampMin = 0, ClampMax = 2))
 	int BulletHitMode;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "The first float is the distance traveled and the second float is the damage multiplier at that range, values above 1 do more damage, does not apply to explosives"))
+	TMap<float, float> DamageFalloffMultiplierAtRange;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "Only applies if DamageFalloffMultiplierAtRange has 2 or more values, if the target distance is in between 2 distances in the DamageFalloffMultiplierAtRange variable the damage will also be in between the 2 damages in the DamageFalloffMultiplierAtRange variable"))
+	bool InterpolateDamageBetweenRanges;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "This will print a string showing how far the bullet went"))
+	bool PrintDistanceTraveled;
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void PrintDistanceTraved_BP(float Distance);
+
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	bool WasPickedup;
-
+	
 	UPROPERTY()
 	int AmountOfTimesPickedup;
 
