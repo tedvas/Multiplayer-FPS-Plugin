@@ -37,6 +37,8 @@ AMultiplayerProjectile::AMultiplayerProjectile()
 	DefaultDamage = 35.0f;
 	ExplosiveDamageRadius = 500.0f;
 	ExplosiveDoFullDamage = false;
+	InterpolateDamageBetweenRanges = true;
+	PrintDistanceTraveled = false;
 	BulletHitMode = 0;
 	BulletHitModeDelay = 0.0f;
 	HitEffectScale = FVector(1.0f, 1.0f, 1.0f);
@@ -160,6 +162,47 @@ void AMultiplayerProjectile::RegisterHit_Implementation(const FHitResult& Hit)
 		else
 		{
 			DamageToApply = DefaultDamage;
+		}
+		
+		float DistanceTraveled = (FireLocation - Hit.ImpactPoint).Size();
+
+		if (PrintDistanceTraveled == true)
+		{
+			PrintDistanceTraved_BP(DistanceTraveled);
+		}
+
+		if (DamageFalloffMultiplierAtRange.Num() > 0)
+		{
+			TArray<float> Distances;
+			TArray<float> Damages;
+								
+			DamageFalloffMultiplierAtRange.GenerateKeyArray(Distances);
+			DamageFalloffMultiplierAtRange.GenerateValueArray(Damages);
+
+			Algo::Reverse(Distances);
+			Algo::Reverse(Damages);
+
+			bool AppliedDamageFalloff = false;
+
+			for (int32 Index = 0; Index != Distances.Num(); ++Index)
+			{
+				if (Distances.IsValidIndex(Index) && AppliedDamageFalloff == false)
+				{
+					if (DistanceTraveled >= Distances[Index])
+					{
+						if (Index != 0 && InterpolateDamageBetweenRanges == true)
+						{
+							DamageToApply *= UKismetMathLibrary::Ease(Damages[Index], Damages[Index - 1], UKismetMathLibrary::MapRangeClamped(DistanceTraveled, Distances[Index], Distances[Index -1], 0.0, 1.0), EEasingFunc::Linear);
+						}
+						else
+						{
+							DamageToApply *= Damages[Index];
+						}
+											
+						AppliedDamageFalloff = true;
+					}
+				}
+			}
 		}
 
 		if (LaunchPhysicsObjects == true && LaunchObjectStrength > 0)
@@ -750,6 +793,46 @@ void AMultiplayerProjectile::SetExplosiveCollisionChannel(TEnumAsByte<ECollision
 TEnumAsByte<ECollisionChannel> AMultiplayerProjectile::GetExplosiveCollisionChannel()
 {
 	return ExplosiveCollisionChannel;
+}
+
+void AMultiplayerProjectile::SetDamageFalloffMultiplierAtRange(TMap<float, float> NewDamageFalloffMultiplierAtRange)
+{
+	DamageFalloffMultiplierAtRange = NewDamageFalloffMultiplierAtRange;
+}
+
+TMap<float, float> AMultiplayerProjectile::GetDamageFalloffMultiplierAtRange()
+{
+	return DamageFalloffMultiplierAtRange;
+}
+
+void AMultiplayerProjectile::SetInterpolateDamageBetweenRanges(bool NewInterpolateDamageBetweenRanges)
+{
+	InterpolateDamageBetweenRanges = NewInterpolateDamageBetweenRanges;
+}
+
+bool AMultiplayerProjectile::GetInterpolateDamageBetweenRanges()
+{
+	return InterpolateDamageBetweenRanges;
+}
+
+void AMultiplayerProjectile::SetPrintDistanceTraveled(bool NewPrintDistanceTraveled)
+{
+	PrintDistanceTraveled = NewPrintDistanceTraveled;
+}
+
+bool AMultiplayerProjectile::GetPrintDistanceTraveled()
+{
+	return PrintDistanceTraveled;
+}
+
+void AMultiplayerProjectile::SetFireLocation(FVector NewFireLocation)
+{
+	FireLocation = NewFireLocation;
+}
+
+FVector AMultiplayerProjectile::GetFireLocation()
+{
+	return FireLocation;
 }
 
 void AMultiplayerProjectile::SetHitDirection(FVector NewHitDirection)
