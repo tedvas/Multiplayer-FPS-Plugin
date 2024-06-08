@@ -15,6 +15,7 @@
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Engine/OverlapResult.h"
+#include "Algo/Reverse.h"
 
 // Sets default values
 AMultiplayerGun::AMultiplayerGun()
@@ -136,6 +137,8 @@ AMultiplayerGun::AMultiplayerGun()
 	PercentageOfOverheatToSpawnSmoke = 0.75f;
 	BulletsShotForSmokeEffect = 0;
 	BulletHitMode = 0;
+	InterpolateDamageBetweenRanges = true;
+	PrintDistanceTraveled = false;
 	BulletHitModeDelay = 0.0f;
 	FireControllerVibrationTag = "Fire";
 	BulletHitControllerVibrationTag = "Hit";
@@ -858,6 +861,47 @@ void AMultiplayerGun::Fire()
 								DamageToApply = DefaultDamage;
 							}
 
+							float DistanceTraveled = (FireLocation - Hit.ImpactPoint).Size();
+
+							if (PrintDistanceTraveled == true)
+							{
+								PrintDistanceTraved_BP(DistanceTraveled);
+							}
+
+							if (DamageFalloffMultiplierAtRange.Num() > 0)
+							{
+								TArray<float> Distances;
+								TArray<float> Damages;
+								
+								DamageFalloffMultiplierAtRange.GenerateKeyArray(Distances);
+								DamageFalloffMultiplierAtRange.GenerateValueArray(Damages);
+
+								Algo::Reverse(Distances);
+								Algo::Reverse(Damages);
+
+								bool AppliedDamageFalloff = false;
+
+								for (int32 Index = 0; Index != Distances.Num(); ++Index)
+								{
+									if (Distances.IsValidIndex(Index) && AppliedDamageFalloff == false)
+									{
+										if (DistanceTraveled >= Distances[Index])
+										{
+											if (Index != 0 && InterpolateDamageBetweenRanges == true)
+											{
+												DamageToApply *= UKismetMathLibrary::Ease(Damages[Index], Damages[Index - 1], UKismetMathLibrary::MapRangeClamped(DistanceTraveled, Distances[Index], Distances[Index -1], 0.0, 1.0), EEasingFunc::Linear);
+											}
+											else
+											{
+												DamageToApply *= Damages[Index];
+											}
+											
+											AppliedDamageFalloff = true;
+										}
+									}
+								}
+							}
+
 							if (LaunchPhysicsObjects == true && LaunchObjectStrength > 0)
 							{
 								if (UPrimitiveComponent* HitComponent = Hit.GetComponent())
@@ -1467,6 +1511,10 @@ void AMultiplayerGun::SpawnProjectile_Implementation(FVector FireLocation, FRota
 			SpawnedProjectile->SetBulletHitModeDelay(BulletHitModeDelay);
 			SpawnedProjectile->SetExplosiveDoFullDamage(ExplosiveDoFullDamage);
 			SpawnedProjectile->SetExplosiveCollisionChannel(CollisionChannel);
+			SpawnedProjectile->SetDamageFalloffMultiplierAtRange(DamageFalloffMultiplierAtRange);
+			SpawnedProjectile->SetInterpolateDamageBetweenRanges(InterpolateDamageBetweenRanges);
+			SpawnedProjectile->SetPrintDistanceTraveled(PrintDistanceTraveled);
+			SpawnedProjectile->SetFireLocation(FireLocation);
 			SpawnedProjectile->SetHitDirection(TraceDirection);
 			SpawnedProjectile->SetDefaultHitEffect(DefaultHitEffect);
 			SpawnedProjectile->SetHitEffects(HitEffects);
