@@ -544,6 +544,16 @@ float AMultiplayerPlayerController::GetRespawnDelay()
 	return RespawnDelay;
 }
 
+void AMultiplayerPlayerController::SetAllSharedCalibersOnSpawn(TMap<FName, int32> NewAllSharedCalibersOnSpawn)
+{
+	AllSharedCalibersOnSpawn = NewAllSharedCalibersOnSpawn;
+}
+
+TMap<FName, int32> AMultiplayerPlayerController::GetAllSharedCalibersOnSpawn()
+{
+	return AllSharedCalibersOnSpawn;
+}
+
 void AMultiplayerPlayerController::SetControllerVibration(bool NewControllerVibration)
 {
 	ControllerVibration = NewControllerVibration;
