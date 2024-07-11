@@ -98,6 +98,12 @@ public:
 	virtual float GetRespawnDelay();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetAllSharedCalibersOnSpawn(TMap<FName, int32> NewAllSharedCalibersOnSpawn);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual TMap<FName, int32> GetAllSharedCalibersOnSpawn();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	void SetControllerVibration(bool NewControllerVibration);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
