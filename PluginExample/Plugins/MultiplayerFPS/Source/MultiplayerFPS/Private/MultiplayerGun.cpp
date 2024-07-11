@@ -205,9 +205,9 @@ void AMultiplayerGun::CheckForOwner()
 
 		if (OwningPlayer)
 		{
-			if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+			if (GetOwningPlayerCast())
 			{
-				if (PlayerCast->GetHealthComponent()->GetHealth() >= 1)
+				if (GetOwningPlayerCast()->GetHealthComponent()->GetHealth() >= 1)
 				{
 					GetDestroyed = false;
 				}
@@ -233,6 +233,16 @@ void AMultiplayerGun::CheckForOwner()
 			DestroySelf();
 		}
 	}
+}
+
+AMultiplayerCharacter* AMultiplayerGun::GetOwningPlayerCast()
+{
+	if (!OwningPlayerCast && OwningPlayer)
+	{
+		OwningPlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer);
+	}
+
+	return OwningPlayerCast;
 }
 
 void AMultiplayerGun::DestroySelf()
@@ -306,10 +316,10 @@ void AMultiplayerGun::MulticastSetWasPickedup_Implementation(bool Pickedup, UPri
 
 			if (OwningPlayer)
 			{
-				if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+				if (GetOwningPlayerCast())
 				{
-					PlayerCast->SetOverlappingInteractable(false);
-					PlayerCast->SetInteractableBeingOverlapped(nullptr);
+					GetOwningPlayerCast()->SetOverlappingInteractable(false);
+					GetOwningPlayerCast()->SetInteractableBeingOverlapped(nullptr);
 				}
 			}
 		}
@@ -490,13 +500,29 @@ void AMultiplayerGun::Fire()
 
 				FVector FireLocation;
 				FRotator FireRotation;
-				OwningPlayer->GetActorEyesViewPoint(FireLocation, FireRotation);
+
+				if (GetOwningPlayerCast())
+				{
+					if (GetOwningPlayerCast()->SpringArm->bUsePawnControlRotation == false)
+					{
+						FireLocation = GetOwningPlayerCast()->CameraComponent->GetComponentLocation();
+						FireRotation = GetOwningPlayerCast()->CameraComponent->GetComponentRotation();
+					}
+					else
+					{
+						OwningPlayer->GetActorEyesViewPoint(FireLocation, FireRotation);
+					}
+				}
+				else
+				{
+					OwningPlayer->GetActorEyesViewPoint(FireLocation, FireRotation);
+				}
 
 				FVector TraceDirection;
 
-				if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+				if (GetOwningPlayerCast())
 				{
-					if (PlayerCast->GetIsAiming() == true)
+					if (GetOwningPlayerCast()->GetIsAiming() == true)
 					{
 						if (UseAimingSpreadMultiplier == true)
 						{
@@ -587,7 +613,7 @@ void AMultiplayerGun::Fire()
 						{
 							if (HasAuthority())
 							{
-								if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+								if (GetOwningPlayerCast())
 								{
 									if (AMultiplayerCharacter* EnemyCast = Cast<AMultiplayerCharacter>(HitActor))
 									{
@@ -597,15 +623,15 @@ void AMultiplayerGun::Fire()
 											{
 												if (UseActorClassesForHitMarkers == 0 && HitActor)
 												{
-													PlayerCast->ShowHitMarker(HitActor, nullptr);
+													GetOwningPlayerCast()->ShowHitMarker(HitActor, nullptr);
 												}
 												else if (UseActorClassesForHitMarkers == 1 && HitSurface)
 												{
-													PlayerCast->ShowHitMarker(nullptr, HitSurface);
+													GetOwningPlayerCast()->ShowHitMarker(nullptr, HitSurface);
 												}
 												else if (UseActorClassesForHitMarkers == 2 && HitActor && HitSurface)
 												{
-													PlayerCast->ShowHitMarker(HitActor, HitSurface);
+													GetOwningPlayerCast()->ShowHitMarker(HitActor, HitSurface);
 												}
 											}
 										}
@@ -775,7 +801,7 @@ void AMultiplayerGun::Fire()
 
 												AActor* ExplosiveHitActor = VictimComp.Get()->GetOwner();
 
-												if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+												if (GetOwningPlayerCast())
 												{
 													if (AMultiplayerCharacter* EnemyCast = Cast<AMultiplayerCharacter>(ExplosiveHitActor))
 													{
@@ -785,7 +811,7 @@ void AMultiplayerGun::Fire()
 															{
 																if (ExplosiveHitActor)
 																{
-																	PlayerCast->ShowHitMarker(ExplosiveHitActor, nullptr);
+																	GetOwningPlayerCast()->ShowHitMarker(ExplosiveHitActor, nullptr);
 																	break;
 																}
 															}
@@ -963,9 +989,9 @@ void AMultiplayerGun::Fire()
 								QueryParams1.AddIgnoredActor(OwningPlayer);
 								QueryParams1.AddIgnoredActor(Actor);
 
-								if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+								if (GetOwningPlayerCast())
 								{
-									for (auto& Weapon : PlayerCast->GetAllWeapons())
+									for (auto& Weapon : GetOwningPlayerCast()->GetAllWeapons())
 									{
 										QueryParams1.AddIgnoredActor(Weapon);
 									}
@@ -982,7 +1008,7 @@ void AMultiplayerGun::Fire()
 
 										if (HasAuthority())
 										{
-											if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+											if (GetOwningPlayerCast())
 											{
 												if (AMultiplayerCharacter* EnemyCast = Cast<AMultiplayerCharacter>(Actor))
 												{
@@ -992,7 +1018,7 @@ void AMultiplayerGun::Fire()
 														{
 															if (UseActorClassesForHitMarkers == 0 && Actor)
 															{
-																PlayerCast->ShowHitMarker(Actor, nullptr);
+																GetOwningPlayerCast()->ShowHitMarker(Actor, nullptr);
 															}
 														}
 													}
@@ -1079,11 +1105,11 @@ void AMultiplayerGun::Fire()
 
 				if ((IsShotgun == false && DoesOverheat == false) || (InfiniteAmmo != 2 && IsShotgun == false))
 				{
-					if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+					if (GetOwningPlayerCast())
 					{
 						if (AmmoInMagazine <= 0)
 						{
-							PlayerCast->Reload();
+							GetOwningPlayerCast()->Reload();
 						}
 					}
 				}
@@ -1118,13 +1144,13 @@ void AMultiplayerGun::ClientFire_Implementation()
 		GunSkeletalMesh->PlayAnimation(FireGunAnimation, false);
 	}
 
-	if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+	if (GetOwningPlayerCast())
 	{
-		if (PlayerCast->ArmsMesh && PlayerCast->GetIsADSing() == false)
+		if (GetOwningPlayerCast()->ArmsMesh && GetOwningPlayerCast()->GetIsADSing() == false)
 		{
 			if (UseFireArmsAnimation != 1 && FireArmsAnimationMontage)
 			{
-				if (UAnimInstance* ArmsAnimationInstance = PlayerCast->ArmsMesh->GetAnimInstance())
+				if (UAnimInstance* ArmsAnimationInstance = GetOwningPlayerCast()->ArmsMesh->GetAnimInstance())
 				{
 					ArmsAnimationInstance->Montage_Play(FireArmsAnimationMontage);
 				}
@@ -1132,8 +1158,8 @@ void AMultiplayerGun::ClientFire_Implementation()
 
 			if (UseFireArmsAnimation != 0 && FireArmsAnimation)
 			{
-				PlayerCast->ArmsMesh->PlayAnimation(FireArmsAnimation, false);
-				PlayerCast->SetArmsAnimationMode(FireArmsAnimation->GetPlayLength());
+				GetOwningPlayerCast()->ArmsMesh->PlayAnimation(FireArmsAnimation, false);
+				GetOwningPlayerCast()->SetArmsAnimationMode(FireArmsAnimation->GetPlayLength());
 			}
 		}
 	}
@@ -1156,7 +1182,7 @@ void AMultiplayerGun::ClientFire_Implementation()
 			}
 		}
 	}
-
+	
 	AddRecoil_BP();
 
 	if (SpawnSmokeEffectWhenShooting == 1)
@@ -1325,9 +1351,9 @@ void AMultiplayerGun::ShotgunFire()
 
 		if (OwningPlayer && AmmoInMagazine <= 0 && InfiniteAmmo != 2)
 		{
-			if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+			if (GetOwningPlayerCast())
 			{
-				PlayerCast->Reload();
+				GetOwningPlayerCast()->Reload();
 			}
 		}
 
@@ -1544,9 +1570,9 @@ void AMultiplayerGun::SpawnProjectile_Implementation(FVector FireLocation, FRota
 				}
 			}
 
-			if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer))
+			if (GetOwningPlayerCast())
 			{
-				for (auto& Weapon : PlayerCast->GetAllWeapons())
+				for (auto& Weapon : GetOwningPlayerCast()->GetAllWeapons())
 				{
 					if (Weapon)
 					{
@@ -1896,6 +1922,39 @@ bool AMultiplayerGun::GetUseProjectile()
 	return UseProjectile;
 }
 
+int AMultiplayerGun::GetSharedCaliberAmount()
+{
+	TArray<int32> AllCaliberAmounts;
+	int CaliberAmount = 0;
+	
+	if (GetUseSharedCalibers() == true)
+	{
+		if (GetOwningPlayerCast())
+		{
+			GetOwningPlayerCast()->GetAllSharedCalibers().GenerateValueArray(AllCaliberAmounts);
+
+			if (AllCaliberAmounts.IsValidIndex(CaliberToUse))
+			{
+				CaliberAmount = AllCaliberAmounts[CaliberToUse];
+			}
+			else
+			{
+				UseSharedCalibers = false;
+
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "CaliberToUse Is Invalid MultiplayerGun.cpp:GetSharedCaliberAmount");
+			}
+		}
+		else
+		{
+			UseSharedCalibers = false;
+
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Player Cast Failed, Using Reserve Ammo Instead MultiplayerGun.cpp:GetSharedCaliberAmount");
+		}
+	}
+
+	return CaliberAmount;
+}
+
 void AMultiplayerGun::Reload()
 {
 	Reload_BP();
@@ -1920,39 +1979,11 @@ void AMultiplayerGun::MulticastReload_Implementation()
 {
 	if (AmmoInMagazine < MaxAmmoInMagazine)
 	{
-		AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer);
-		TArray<FName> AllCaliberNames;
-		TArray<int32> AllCaliberAmounts;
-
-		TMap<FName, int32> NewAllSharedCalibers;
-
-		if (GetUseSharedCalibers() == true)
-		{
-			if (PlayerCast)
-			{
-				PlayerCast->GetAllSharedCalibers().GenerateKeyArray(AllCaliberNames);
-				PlayerCast->GetAllSharedCalibers().GenerateValueArray(AllCaliberAmounts);
-
-				if (!AllCaliberAmounts.IsValidIndex(CaliberToUse))
-				{
-					UseSharedCalibers = false;
-
-					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "CaliberToUse Is Invalid MultiplayerGun.cpp:MulticastReload_Implementation");
-				}
-			}
-			else
-			{
-				UseSharedCalibers = false;
-
-				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Player Cast Failed, Using Reserve Ammo Instead MultiplayerGun.cpp:MulticastReload_Implementation");
-			}
-		}
-
-		if ((UseSharedCalibers == false && ReserveAmmo >= 1) || (UseSharedCalibers == true && AllCaliberAmounts[CaliberToUse] >= 1) || InfiniteAmmo == 1)
+		if ((UseSharedCalibers == false && ReserveAmmo >= 1) || (UseSharedCalibers == true && GetSharedCaliberAmount() >= 1) || InfiniteAmmo == 1)
 		{
 			int BulletsShot = MaxAmmoInMagazine - AmmoInMagazine;
 
-			if ((BulletsShot <= ReserveAmmo && UseSharedCalibers == false) || (BulletsShot <= AllCaliberAmounts[CaliberToUse] && UseSharedCalibers == true))
+			if ((BulletsShot <= ReserveAmmo && UseSharedCalibers == false) || (BulletsShot <= GetSharedCaliberAmount() && UseSharedCalibers == true))
 			{
 				AmmoInMagazine = MaxAmmoInMagazine;
 
@@ -1960,7 +1991,7 @@ void AMultiplayerGun::MulticastReload_Implementation()
 				{
 					if (UseSharedCalibers == true)
 					{
-						PlayerCast->SetSharedCaliberAmount(CaliberToUse, PlayerCast->GetSharedCaliberAmount(CaliberToUse) - BulletsShot);
+						GetOwningPlayerCast()->SetSharedCaliberAmount(CaliberToUse, GetOwningPlayerCast()->GetSharedCaliberAmount(CaliberToUse) - BulletsShot);
 					}
 					else
 					{
@@ -1970,14 +2001,14 @@ void AMultiplayerGun::MulticastReload_Implementation()
 
 				BulletsShot = 0;
 			}
-			else if ((BulletsShot > ReserveAmmo && UseSharedCalibers == false) || (BulletsShot > AllCaliberAmounts[CaliberToUse] && UseSharedCalibers == true))
+			else if ((BulletsShot > ReserveAmmo && UseSharedCalibers == false) || (BulletsShot > GetSharedCaliberAmount() && UseSharedCalibers == true))
 			{
 				if (InfiniteAmmo == 0)
 				{
 					if (UseSharedCalibers == true)
 					{
-						AmmoInMagazine += PlayerCast->GetSharedCaliberAmount(CaliberToUse);
-						PlayerCast->SetSharedCaliberAmount(CaliberToUse, 0);
+						AmmoInMagazine += GetOwningPlayerCast()->GetSharedCaliberAmount(CaliberToUse);
+						GetOwningPlayerCast()->SetSharedCaliberAmount(CaliberToUse, 0);
 					}
 					else
 					{
@@ -2111,6 +2142,7 @@ void AMultiplayerGun::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AMultiplayerGun, OwningPlayer);
+	DOREPLIFETIME(AMultiplayerGun, OwningPlayerCast);
 	DOREPLIFETIME(AMultiplayerGun, WasPickedup);
 	DOREPLIFETIME(AMultiplayerGun, AmmoInMagazine);
 	DOREPLIFETIME(AMultiplayerGun, ReserveAmmo);

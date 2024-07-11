@@ -617,12 +617,26 @@ TArray<AMultiplayerGun*> AMultiplayerCharacter::GetAllWeapons()
 
 void AMultiplayerCharacter::SetAllSharedCalibers(TMap<FName, int32> NewAllSharedCalibers)
 {
-	AllSharedCalibers = NewAllSharedCalibers;
+	NewAllSharedCalibers.GenerateKeyArray(AllSharedCaliberNames);
+	NewAllSharedCalibers.GenerateValueArray(AllSharedCaliberAmounts);
 }
 
 TMap<FName, int32> AMultiplayerCharacter::GetAllSharedCalibers()
 {
-	return AllSharedCalibers;
+	TMap<FName, int32> Calibers;
+
+	if (AllSharedCaliberNames.Num() > 0)
+	{
+		for (int32 Index = 0; Index != AllSharedCaliberNames.Num(); ++Index)
+		{
+			if (AllSharedCaliberNames.IsValidIndex(Index))
+			{
+				Calibers.Add(AllSharedCaliberNames[Index], AllSharedCaliberAmounts[Index]);
+			}
+		}
+	}
+
+	return Calibers;
 }
 
 TArray<FName> AMultiplayerCharacter::GetAllSharedCaliberNames()
@@ -2073,6 +2087,8 @@ void AMultiplayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(AMultiplayerCharacter, IsAiming);
 	DOREPLIFETIME(AMultiplayerCharacter, IsADSing);
 	DOREPLIFETIME(AMultiplayerCharacter, IsZoomedIn);
+	DOREPLIFETIME(AMultiplayerCharacter, AllSharedCaliberNames);
+	DOREPLIFETIME(AMultiplayerCharacter, AllSharedCaliberAmounts);
 }
 
 // Called to bind functionality to input
