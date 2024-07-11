@@ -23,6 +23,7 @@ class UMaterialInterface;
 class UCameraShakeBase;
 class UDamageType;
 class UForceFeedbackAttenuation;
+class AMultiplayerCharacter;
 
 USTRUCT()
 struct FGunHitEffectsReplication
@@ -84,6 +85,9 @@ public:
 	UFUNCTION(BlueprintCallable, meta = (Tooltip = "This will make sure the owner is valid so if for example a player disconnects their gun won't just be floating where they last were"), Category = "Functions")
 	virtual void CheckForOwner();
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions", meta = (Tooltip = "This can return nullptr so check that it's valid when using, requires using MultiplayerCharacter class"))
+	virtual AMultiplayerCharacter* GetOwningPlayerCast();
+	
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void DestroySelf();
 
@@ -325,6 +329,9 @@ public:
 	virtual bool GetUseProjectile();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual int GetSharedCaliberAmount();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	void Reload();
 
 	UFUNCTION(Server, Reliable, Category = "Functions")
@@ -441,6 +448,9 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	APawn* OwningPlayer;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
+	AMultiplayerCharacter* OwningPlayerCast;
 
 	// This is only used to control fire rate, to control if the player can fire set can shoot in the player character class
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
