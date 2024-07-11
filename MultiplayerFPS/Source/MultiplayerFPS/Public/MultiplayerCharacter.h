@@ -585,8 +585,11 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	TArray<AMultiplayerGun*> AllWeapons;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "This would be the name and amount of each caliber, only applies to guns that use this rather than their own reserve ammo, set defaults in the player controller", ClampMin = 0))
-	TMap<FName, int32> AllSharedCalibers;
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Replicated, Category = "Weapons", meta = (Tooltip = "Only applies to guns that use this rather than their own reserve ammo, set defaults in the player controller", ClampMin = 0))
+	TArray<FName> AllSharedCaliberNames;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Replicated, Category = "Weapons", meta = (Tooltip = "Only applies to guns that use this rather than their own reserve ammo, set defaults in the player controller", ClampMin = 0))
+	TArray<int32> AllSharedCaliberAmounts;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage")
 	TSubclassOf<UCameraShakeBase> TakeDamageCameraShake;
