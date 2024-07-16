@@ -100,7 +100,7 @@ AMultiplayerGun::AMultiplayerGun()
 	BulletCasingInheritsVelocity = true;
 	MaxAmountOfBulletCasings = 30;
 	ReloadSpeed = 0.5f;
-	ReloadSpeed1 = 0.4f;
+	ReloadSpeed1 = -1.0f;
 	WeaponSwitchTime = 0.0f;
 	UseTwoWeaponSwitchAnimations = true;
 	UseTwoReloadAnimations = true;
