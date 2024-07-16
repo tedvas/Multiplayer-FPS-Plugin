@@ -382,10 +382,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "Only set this variable if you are placing the gun in the level, do not set this at runtime"))
 	bool WasPickedupBeginPlay;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to refill the magazine", ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to refill the magazine, 0 = instant", ClampMin = 0))
 	float ReloadSpeed;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to finish reloading after the magazine was refilled", ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to finish reloading after the magazine was refilled, 0 = instant, -1 = time for arms animation to finish, -2 = time for gun animation to finish, -3 = time for third person animation to finish", ClampMin = -3))
 	float ReloadSpeed1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "If set to 0 it will just use the animation length, if this is not 0 it will use this to determine how long it takes to switch off of and onto this weapon", ClampMin = 0.0f))
@@ -412,14 +412,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied"))
 	UAnimationAsset* ReloadEmptyAnimation;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component"))
+	UAnimationAsset* ThirdPersonReloadAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component when the gun is emptied"))
+	UAnimationAsset* ThirdPersonReloadEmptyAnimation;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
 	bool UseTwoReloadAnimations;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms if UseTwoReloadAnimations = true"))
 	UAnimationAsset* ReloadAnimation1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied if UseTwoReloadAnimations = true"))
 	UAnimationAsset* ReloadEmptyAnimation1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component if UseTwoReloadAnimations = true"))
+	UAnimationAsset* ThirdPersonReloadAnimation1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component when the gun is emptied if UseTwoReloadAnimations = true"))
+	UAnimationAsset* ThirdPersonReloadEmptyAnimation1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Only applies if you are using a skeletal mesh for your gun"))
 	UAnimationAsset* ReloadGunAnimation;
