@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "2.03",
+	"VersionName": "2.05",
 	"FriendlyName": "Multiplayer FPS",
 	"Description": "This plugin allows you to create a multiplayer first person shooter with ease.",
 	"Category": "Multiplayer FPS",

@@ -189,7 +189,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "Only applies to MultiplayerCharacter when possessing pawn"))
 	bool GiveLoadoutOnBeginPlay;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Weapons", meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Weapons", meta = (Tooltip = "If you are setting this at runtime use the SetMaxWeaponAmount function instead of directly setting this variable", ClampMin = 0))
 	int MaxWeaponAmount;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
