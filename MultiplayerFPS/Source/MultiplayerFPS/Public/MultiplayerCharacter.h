@@ -80,7 +80,7 @@ public:
 	USkeletalMeshComponent* ArmsMesh;
 
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Functions", meta = (Tooltip = "Override this function to set a different mesh"))
-	UPrimitiveComponent* GetPlayerModelMesh();
+	USkeletalMeshComponent* GetPlayerModelMesh();
 
 	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions")
 	virtual void SetupInput();
@@ -410,7 +410,7 @@ public:
 	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
 	void MulticastReload2();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "Having PutArmsBackUp = false will not reset player model and gun reload animations"))
 	virtual void CancelReload(bool PutArmsBackUp = true);
 
 	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
@@ -418,6 +418,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
 	void MulticastCancelReload(bool PutArmsBackUp = true);
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void Reload_BP();
 
 	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions")
 	virtual void ShowHitMarker(AActor* HitActor, UPhysicalMaterial* HitPhysicalMaterial);
