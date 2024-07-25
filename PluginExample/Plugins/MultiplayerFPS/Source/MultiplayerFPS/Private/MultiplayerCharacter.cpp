@@ -36,7 +36,7 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	HealthComponent = CreateDefaultSubobject<UMultiplayerHealthComponent>(TEXT("Health Component"));
 
 
-	/* ************* Sensitivity ************* */
+	/* ************* Settings ************* */
 	FieldOfView = 90.0f;
 	MouseDefaultSensitivityX = 0.5f;
 	MouseAimingSensitivityX = 0.275f;
@@ -176,6 +176,16 @@ void AMultiplayerCharacter::PrintStringForOwningControllerInvalid()
 	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Owning Controller Invalid After Trying On Tick For 10 Seconds, Still Retrying MultiplayerCharacter.cpp:GetOwningController_Implementation");
 }
 
+void AMultiplayerCharacter::MulticastReplicateControlRotation_Implementation(FRotator ControlRotation)
+{
+	ReplicatedControlRotation = ControlRotation;
+
+	if (!IsLocallyControlled() && CameraComponent)
+	{
+		CameraComponent->SetWorldRotation(ReplicatedControlRotation);
+	}
+}
+
 void AMultiplayerCharacter::RecalculateBaseEyeHeight()
 {
 	BaseEyeHeight = CameraComponent->GetRelativeLocation().Z + SpringArm->GetRelativeLocation().Z;
@@ -200,6 +210,11 @@ void AMultiplayerCharacter::Look(const FInputActionValue& Value)
 	{
 		AddControllerYawInput(LookVector.X * CurrentMouseSensitivityX);
 		AddControllerPitchInput(LookVector.Y * CurrentMouseSensitivityY);
+
+		if (IsLocallyControlled())
+		{
+			MulticastReplicateControlRotation(GetControlRotation());
+		}
 	}
 }
 
