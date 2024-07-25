@@ -100,6 +100,9 @@ public:
 	UFUNCTION(Category = "Functions")
 	virtual void PrintStringForOwningControllerInvalid();
 
+	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastReplicateControlRotation(FRotator ControlRotation);
+
 	virtual void RecalculateBaseEyeHeight() override;
 	virtual void Move(const FInputActionValue& Value);
 	virtual void Look(const FInputActionValue& Value);
@@ -493,6 +496,9 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
 	APlayerController* OwningController;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Player Info")
+	FRotator ReplicatedControlRotation;
 
 protected:
 	// Called when the game starts or when spawned
