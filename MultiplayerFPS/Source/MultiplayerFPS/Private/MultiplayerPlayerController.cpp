@@ -29,12 +29,16 @@ AMultiplayerPlayerController::AMultiplayerPlayerController()
 	UseAimSensitivityMultipler = true;
 
 	PlayerIndex = 0;
+	UsingThirdPerson = false;
+	CanSwitchPerspective = true;
 	UsingGamepad = false;
 	GiveLoadoutOnBeginPlay = true;
 	MaxWeaponAmount = 2;
 	RandomizeUnselectedWeapons = true;
 	AvoidDuplicatesForRandomWeapons = 2;
 	RespawnDelay = 2.5f;
+	ShowHUDOnRespawn = true;
+	RemoveAllWidgetsOnRespawn = false;
 
 	bReplicates = true;
 }
@@ -344,6 +348,7 @@ void AMultiplayerPlayerController::ApplySettingsToCharacter()
 
 		if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(GetControlledPawn()))
 		{
+			PlayerCast->SetUsingThirdPerson(GetUsingThirdPerson(), true);
 			PlayerCast->FieldOfView = FieldOfView;
 			PlayerCast->MouseDefaultSensitivityX = MouseDefaultSensitivityX;
 			PlayerCast->MouseAimingSensitivityX = MouseAimingSensitivityX;
@@ -402,9 +407,6 @@ void AMultiplayerPlayerController::Respawn(float DelayToRespawn)
 	if (DelayToRespawn > 0)
 	{
 		GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &AMultiplayerPlayerController::Respawn1, DelayToRespawn, false, DelayToRespawn);
-
-		ShowHUDTimerDelegate.BindUFunction(this, FName("CreateUIWidget"), HUDClass, 0, true, DeathScreen, true, false, true, true, false, false);
-		GetWorldTimerManager().SetTimer(ShowHUDTimerHandle, ShowHUDTimerDelegate, DelayToRespawn, false, DelayToRespawn);
 	}
 	else
 	{
@@ -456,6 +458,15 @@ void AMultiplayerPlayerController::Respawn1()
 			}
 		}
 	}
+
+	if (ShowHUDOnRespawn == true)
+	{
+		CreateUIWidget(HUDClass, 0, RemoveAllWidgetsOnRespawn, DeathScreen, true, false, true, true, false, false);
+	}
+	else
+	{
+		RemoveUIWidget(DeathScreen, RemoveAllWidgetsOnRespawn, true, false, true, true);
+	}
 }
 
 void AMultiplayerPlayerController::ServerRespawn1_Implementation()
@@ -471,6 +482,26 @@ void AMultiplayerPlayerController::SetPlayerIndex(int NewPlayerIndex)
 int AMultiplayerPlayerController::GetPlayerIndex()
 {
 	return PlayerIndex;
+}
+
+void AMultiplayerPlayerController::SetCanSwitchPerspective(bool NewCanSwitchPerspective)
+{
+	CanSwitchPerspective = NewCanSwitchPerspective;
+}
+
+bool AMultiplayerPlayerController::GetCanSwitchPerspective()
+{
+	return CanSwitchPerspective;
+}
+
+void AMultiplayerPlayerController::SetUsingThirdPerson(bool NewUsingThirdPerson)
+{
+	UsingThirdPerson = NewUsingThirdPerson;
+}
+
+bool AMultiplayerPlayerController::GetUsingThirdPerson()
+{
+	return UsingThirdPerson;
 }
 
 void AMultiplayerPlayerController::SetGiveLoadoutOnBeginPlay(bool NewGiveLoadoutOnBeginPlay)
@@ -581,4 +612,5 @@ void AMultiplayerPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimePr
 	DOREPLIFETIME(AMultiplayerPlayerController, PlayerIndex);
 	DOREPLIFETIME(AMultiplayerPlayerController, WeaponChoices);
 	DOREPLIFETIME(AMultiplayerPlayerController, MaxWeaponAmount);
+	DOREPLIFETIME(AMultiplayerPlayerController, UsingThirdPerson);
 }
