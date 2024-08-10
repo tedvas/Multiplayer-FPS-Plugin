@@ -10,6 +10,7 @@
 #include "Camera/CameraComponent.h"
 #include "MultiplayerGun.h"
 #include "MultiplayerHealthComponent.h"
+#include "MultiplayerPlayerController.h"
 #include "MultiplayerCharacter.generated.h"
 
 class UInputMappingContext;
@@ -57,6 +58,15 @@ class MULTIPLAYERFPS_API AMultiplayerCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
 	UInputAction* IA_GamepadSwitchWeapons;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
+	UInputAction* IA_SwitchPerspective;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
+	UInputAction* IA_SwitchToWeapon1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
+	UInputAction* IA_SwitchToWeapon2;
+
 public:
 	// Sets default values for this character's properties
 	AMultiplayerCharacter();
@@ -79,6 +89,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USkeletalMeshComponent* ArmsMesh;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	USkeletalMeshComponent* FirstPersonPlayerModel;
+
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Functions", meta = (Tooltip = "Override this function to set a different mesh"))
 	USkeletalMeshComponent* GetPlayerModelMesh();
 
@@ -94,11 +107,26 @@ public:
 	UFUNCTION(Client, Reliable, Category = "Functions")
 	virtual void ClientRemoveInput();
 
-	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions")
-	virtual void GetOwningController();
+	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions", meta = (Tooltip = "This will automatically get the owning controller, so it does not need an input"))
+	virtual void SetOwningController();
 
-	UFUNCTION(Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	AMultiplayerPlayerController* GetOwningController();
+
+	UFUNCTION()
 	virtual void PrintStringForOwningControllerInvalid();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ReplicateCameraTransform(FVector CameraLocation, FRotator CameraRotation);
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void ServerReplicateCameraTransform(FVector CameraLocation, FRotator CameraRotation);
+
+	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastReplicateCameraTransform(FVector CameraLocation, FRotator CameraRotation);
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void ServerReplicateControlRotation(FRotator ControlRotation);
 
 	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
 	virtual void MulticastReplicateControlRotation(FRotator ControlRotation);
@@ -109,6 +137,7 @@ public:
 	virtual void GamepadLook(const FInputActionValue& Value);
 	virtual void PressJump();
 	virtual void HoldJump();
+	virtual void ReleaseJump();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetSensitivity();
@@ -137,6 +166,39 @@ public:
 	UFUNCTION(Server, Reliable, Category = "Functions")
 	virtual void ServerPickupItem(AInteractableItem* ItemToPickup);
 
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastPickupItem(AInteractableItem* ItemToPickup);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetUsingThirdPerson(bool NewUsingThirdPerson, bool SnapCameraLocation = false);
+
+	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions")
+	virtual void ClientSetUsingThirdPerson(bool NewUsingThirdPerson, bool SnapCameraLocation = false);
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void ServerSetUsingThirdPerson(bool NewUsingThirdPerson);
+
+	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastSetUsingThirdPerson(bool NewUsingThirdPerson);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ApplyPerspectiveVisibility();
+
+	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions")
+	virtual void ClientApplyPerspectiveVisibility();
+
+	UPROPERTY()
+	bool AppliedPerspectiveVisibilityOnClient = false;
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ToggleThirdPerson();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void SwitchPerspective_BP(bool NewUsingThirdPerson, bool SnapCameraLocation = false);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetUsingThirdPerson();
+
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetCanInteract(bool NewCanInteract);
 
@@ -146,25 +208,25 @@ public:
 	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
 	virtual void MulticastSetCanInteract(bool NewCanInteract);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetCanInteract();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetInteractDistance(float NewInteractDistance);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetInteractDistance();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetOverlappingInteractable(bool NewOverlappingInteractable);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetOverlappingInteractable();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetInteractableBeingOverlapped(AInteractableItem* NewInteractableBeingOverlapped);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual AInteractableItem* GetInteractableBeingOverlapped();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
@@ -200,7 +262,7 @@ public:
 	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
 	virtual void MulticastSetCanShoot(bool NewCanShoot);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetCanShoot();
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Functions")
@@ -239,14 +301,14 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetWeaponIndex(AMultiplayerGun* Weapon);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetAmountOfWeapons();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetMaxWeaponAmount();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
-	virtual void SetWeaponVisibility(int WeaponVisibilityToChange, bool Visible, bool SetAllOtherWeaponsToOppositeVisibility = true);
+	virtual void SetWeaponVisibility(bool ApplyToAllWeapons, int WeaponVisibilityToChange, bool Visible, bool SetAllOtherWeaponsToOppositeVisibility = true, bool ApplyToArms = false);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void GiveLoadout(TArray<TSubclassOf<AMultiplayerGun>> Loadout, int MaxWeaponAmount = 2);
@@ -256,6 +318,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
 	virtual void GiveWeapon(TSubclassOf<AMultiplayerGun> WeaponToSpawn, AMultiplayerGun* WeaponToPickup = nullptr, bool SwitchToNewWeapon = false);
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastGiveWeapon(AMultiplayerGun* WeaponToPickup = nullptr, bool SwitchToNewWeapon = false);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void AddWeapon(AMultiplayerGun* Weapon);
@@ -316,6 +381,12 @@ public:
 
 	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
 	virtual void MulticastLastWeapon();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SwitchToWeapon1();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SwitchToWeapon2();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void PressFireInput();
@@ -437,6 +508,12 @@ public:
 	UFUNCTION(Category = "Functions")
 	virtual void SetArmsAnimationMode1();
 
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "Set delay to 0 to not use it"))
+	virtual void SetPlayerModelAnimationMode(float Delay = 0.0f);
+
+	UFUNCTION(Category = "Functions")
+	virtual void SetPlayerModelAnimationMode1();
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (ClampMin = 0.0f, Tooltip = "Set this variable in the player controller, not here"))
 	float FieldOfView;
 
@@ -494,10 +571,23 @@ public:
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
 	int PlayerIndex;
 
+protected:
+
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
 	APlayerController* OwningController;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Player Info")
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
+	AMultiplayerPlayerController* OwningControllerCast;
+
+public:
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
+	FVector ReplicatedCameraLocation;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
+	FRotator ReplicatedCameraRotation;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
 	FRotator ReplicatedControlRotation;
 
 protected:
@@ -506,6 +596,76 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UMultiplayerHealthComponent* HealthComponent;
+
+public:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Replicated, Category = "Perspective", meta = (Tooltip = "Set this to true if you want third person to be default, set this in the player controller"))
+	bool UsingThirdPerson;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	float FirstPersonSpringArmLength;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	float ThirdPersonSpringArmLength;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	FVector FirstPersonSpringArmLocation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	FVector ThirdPersonSpringArmLocation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	bool AttachSpringArmToPlayerModelFirstPerson;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	FName SocketToAttachSpringArmToFirstPerson;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	USkeletalMesh* FirstPersonPlayerModelMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	USkeletalMesh* FirstPersonPlayerModelWithoutWeapons;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	bool FirstPersonCameraLag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	bool FirstPersonCameraRotationLag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	float FirstPersonCameraLagSpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	float FirstPersonCameraRotationLagSpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	bool ThirdPersonCameraLag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	bool ThirdPersonCameraRotationLag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	float ThirdPersonCameraLagSpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	float ThirdPersonCameraRotationLagSpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	float PerspectiveTransitionTime;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	bool HidePlayerModelMeshInFirstPerson;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "This will override HideFirstPersonArmsWithoutWeapon"))
+	bool HideFirstPersonArmsAndGunInFirstPerson;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "This will decide whether to hide the first person arms mesh when you do not have a weapon"))
+	bool HideFirstPersonArmsWithoutWeapon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	bool HideThirdPersonGunInFirstPerson;
+
+protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Interact")
 	bool CanInteract;
@@ -530,6 +690,9 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	bool HoldingFireInput;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "This is only used for the default animation blueprint"))
+	bool HoldingJumpInput;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	bool HoldingAimInput;
@@ -624,6 +787,7 @@ protected:
 	FTimerHandle SwitchWeaponsTimerHandle;
 	FTimerHandle ReloadTimerHandle;
 	FTimerHandle ArmsAnimationModeTimerHandle;
+	FTimerHandle PlayerModelAnimationModeTimerHandle;
 
 public:
 	// Called every frame
