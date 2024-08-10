@@ -88,241 +88,241 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetOwningPlayer(APawn* NewOwningPlayer);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual APawn* GetOwningPlayer();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetLaunchPhysicsObjects(bool NewLaunchPhysicsObjects);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetLaunchPhysicsObjects();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetLaunchObjectStrength(float NewLaunchObjectStrength);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetLaunchObjectStrength();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetLaunchObjectVelocityChange(bool NewLaunchObjectVelocityChange);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetLaunchObjectVelocityChange();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetIsExplosive(bool NewIsExplosive);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetIsExplosive();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitEffectScale(FVector NewHitEffectScale);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FVector GetHitEffectScale();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosionIgnoredActors(TArray<AActor*> NewExplosionIgnoredActors);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TArray<AActor*> GetExplosionIgnoredActors();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosionIgnoredClasses(TArray<TSubclassOf<AActor>> NewExplosionIgnoredClasses);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TArray<TSubclassOf<AActor>> GetExplosionIgnoredClasses();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetTimeToDespawnProjectile(float NewTimeToDespawnProjectile);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetTimeToDespawnProjectile();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDefaultDamage(float NewDefaultDamage);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetDefaultDamage();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDamage(TMap<UPhysicalMaterial*, float> NewDamage);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<UPhysicalMaterial*, float> GetDamage();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosionIgnoreOwner(bool NewExplosionIgnoreOwner);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetExplosionIgnoreOwner();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitMode(int NewBulletHitMode);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetBulletHitMode();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitModeDelay(float NewBulletHitModeDelay);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetBulletHitModeDelay();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosiveDamageRadius(float NewExplosiveDamageRadius);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetExplosiveDamageRadius();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosiveDoFullDamage(bool NewExplosiveDoFullDamage);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetExplosiveDoFullDamage();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetExplosiveCollisionChannel(TEnumAsByte<ECollisionChannel> NewExplosiveCollisionChannel);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TEnumAsByte<ECollisionChannel> GetExplosiveCollisionChannel();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDamageFalloffMultiplierAtRange(TMap<float, float> NewDamageFalloffMultiplierAtRange);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<float, float> GetDamageFalloffMultiplierAtRange();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetInterpolateDamageBetweenRanges(bool NewInterpolateDamageBetweenRanges);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetInterpolateDamageBetweenRanges();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetPrintDistanceTraveled(bool NewPrintDistanceTraveled);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetPrintDistanceTraveled();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetFireLocation(FVector NewFireLocation);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FVector GetFireLocation();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitDirection(FVector NewHitDirection);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FVector GetHitDirection();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDefaultHitEffect(UParticleSystem* NewDefaultHitEffect);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual UParticleSystem* GetDefaultHitEffect();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitEffects(TMap<UPhysicalMaterial*, UParticleSystem*> NewHitEffects);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<UPhysicalMaterial*, UParticleSystem*> GetHitEffects();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDefaultBulletHitSound(USoundBase* NewDefaultBulletHitSound);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual USoundBase* GetDefaultBulletHitSound();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitSounds(TMap<USoundBase*, UPhysicalMaterial*> NewBulletHitSounds);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<USoundBase*, UPhysicalMaterial*> GetBulletHitSounds();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDamageType(TSubclassOf<UDamageType> NewDamageType);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TSubclassOf<UDamageType> GetDamageType();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDefaultBulletHitDecal(UMaterialInterface* NewBulletHitDecal);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual UMaterialInterface* GetDefaultBulletHitDecal();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitDecals(TMap<UMaterialInterface*, UPhysicalMaterial*> NewBulletHitDecals);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<UMaterialInterface*, UPhysicalMaterial*> GetBulletHitDecals();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitDecalSize(FVector NewBulletHitDecalSize);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FVector GetBulletHitDecalSize();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetWhizzingSoundVolumeBasedOnSpeed(bool NewWhizzingSoundVolumeBasedOnSpeed);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetWhizzingSoundVolumeBasedOnSpeed();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetUseActorClassesForHitMarkers(int NewUseActorClassesForHitMarkers);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetUseActorClassesForHitMarkers();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitMarkerActorSounds(TMap<TSubclassOf<AActor>, USoundBase*> NewHitMarkerActorSounds);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<TSubclassOf<AActor>, USoundBase*> GetHitMarkerActorSounds();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitMarkerSurfaceSounds(TMap<UPhysicalMaterial*, USoundBase*> NewHitMarkerSurfaceSounds);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<UPhysicalMaterial*, USoundBase*> GetHitMarkerSurfaceSounds();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetCanCrumbleDestructibleMeshes(bool NewCanCrumbleDestructibleMeshes);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetCanCrumbleDestructibleMeshes();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDestructionSphereSize(FVector NewDestructionSphereSize);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FVector GetDestructionSphereSize();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDestructionSphereToSpawn(TSubclassOf<AActor> NewDestructionSphereToSpawn);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TSubclassOf<AActor> GetDestructionSphereToSpawn();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitControllerVibration(UForceFeedbackEffect* NewBulletHitControllerVibration);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual UForceFeedbackEffect* GetBulletHitControllerVibration();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitControllerVibrationAttenuation(UForceFeedbackAttenuation* NewBulletHitControllerVibrationAttenuation);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual UForceFeedbackAttenuation* GetBulletHitControllerVibrationAttenuation();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetBulletHitControllerVibrationTag(FName NewBulletHitControllerVibrationTag);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FName GetBulletHitControllerVibrationTag();
 
 protected:
