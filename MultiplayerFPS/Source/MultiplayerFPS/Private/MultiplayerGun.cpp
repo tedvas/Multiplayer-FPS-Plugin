@@ -30,20 +30,36 @@ AMultiplayerGun::AMultiplayerGun()
 	{
 		GunSkeletalMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Gun Skeletal Mesh"));
 		RootComponent = GunSkeletalMesh;
+		GunSkeletalMesh->SetIsReplicated(true);
 		ThirdPersonGunSkeletalMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Third Person Gun Skeletal Mesh"));
 		ThirdPersonGunSkeletalMesh->SetupAttachment(RootComponent, NAME_None);
+		ThirdPersonGunSkeletalMesh->SetIsReplicated(true);
 		GunSkeletalMesh->SetOnlyOwnerSee(true);
 		GunSkeletalMesh->SetCollisionProfileName("NoCollision");
 		GunSkeletalMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 		ThirdPersonGunSkeletalMesh->SetOwnerNoSee(true);
 		ThirdPersonGunSkeletalMesh->SetCollisionProfileName("NoCollision");
+		ThirdPersonFireSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Third Person Fire Scene Component"));
+		ThirdPersonFireSceneComponent->SetupAttachment(ThirdPersonGunSkeletalMesh);
+		ThirdPersonFireSceneComponent->SetIsReplicated(true);
+		ThirdPersonBulletCasingSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Third Person Bullet Casing Scene Component"));
+		ThirdPersonBulletCasingSceneComponent->SetupAttachment(ThirdPersonGunSkeletalMesh);
+		ThirdPersonBulletCasingSceneComponent->SetIsReplicated(true);
 	}
 	else
 	{
 		GunStaticMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Gun Static Mesh"));
 		RootComponent = GunStaticMesh;
+		GunStaticMesh->SetIsReplicated(true);
 		ThirdPersonGunStaticMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Third Person Gun Static Mesh"));
 		ThirdPersonGunStaticMesh->SetupAttachment(RootComponent, NAME_None);
+		ThirdPersonFireSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Third Person Fire Scene Component"));
+		ThirdPersonFireSceneComponent->SetupAttachment(ThirdPersonGunStaticMesh);
+		ThirdPersonFireSceneComponent->SetIsReplicated(true);
+		ThirdPersonBulletCasingSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Third Person Bullet Casing Scene Component"));
+		ThirdPersonBulletCasingSceneComponent->SetupAttachment(ThirdPersonGunStaticMesh);
+		ThirdPersonBulletCasingSceneComponent->SetIsReplicated(true);
+		GunStaticMesh->SetIsReplicated(true);
 		GunStaticMesh->SetOnlyOwnerSee(true);
 		GunStaticMesh->SetCollisionProfileName("NoCollision");
 		GunStaticMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
@@ -53,13 +69,17 @@ AMultiplayerGun::AMultiplayerGun()
 
 	FireSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Fire Scene Component"));
 	FireSceneComponent->SetupAttachment(RootComponent, NAME_None);
+	FireSceneComponent->SetIsReplicated(true);
 	BulletCasingSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Bullet Casing Scene Component"));
 	BulletCasingSceneComponent->SetupAttachment(RootComponent, NAME_None);
+	BulletCasingSceneComponent->SetIsReplicated(true);
 	PickupBoxCollision->SetupAttachment(RootComponent, NAME_None);
 	FireBoxScene = CreateDefaultSubobject<USceneComponent>(TEXT("Fire Box Scene"));
 	FireBoxScene->SetupAttachment(RootComponent, NAME_None);
+	FireBoxScene->SetIsReplicated(true);
 	DamageBoxCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("Damage Box Collision"));
 	DamageBoxCollision->SetupAttachment(FireBoxScene, NAME_None);
+	DamageBoxCollision->SetIsReplicated(true);
 
 	CanShoot = true;
 	FireMode = 0;
@@ -67,6 +87,8 @@ AMultiplayerGun::AMultiplayerGun()
 	IsShotgun = false;
 	ShotgunAmountOfPellets = 8;
 	ShotgunAmountOfPelletsShot = 0;
+	FireFromBarrel = 0;
+	BulletSpawnLocationOffset = FVector(0.0f, 0.0f, 0.0f);
 	UseAimingSpreadMultiplier = true;
 	SpreadAimingMultiplier = 0.25f;
 	MinHipFireVerticalSpread = 0.0f;
@@ -99,11 +121,12 @@ AMultiplayerGun::AMultiplayerGun()
 	BulletCasingSpawnCollisionHandlingMethod = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	BulletCasingInheritsVelocity = true;
 	MaxAmountOfBulletCasings = 30;
-	ReloadSpeed = 0.5f;
+	ReloadSpeed = -1.0f;
 	ReloadSpeed1 = -1.0f;
 	WeaponSwitchTime = 0.0f;
 	UseTwoWeaponSwitchAnimations = true;
 	UseTwoReloadAnimations = true;
+	UseTwoThirdPersonReloadAnimations = false;
 	FireRate = 0.1f;
 	ContinuousFireDamageRate = 0.005f;
 	AmountOfShotsForBurst = 3;
@@ -143,6 +166,8 @@ AMultiplayerGun::AMultiplayerGun()
 	FireControllerVibrationTag = "Fire";
 	BulletHitControllerVibrationTag = "Hit";
 	HitEffectScale = FVector(1.0f, 1.0f, 1.0f);
+	ReplicateMuzzleFlashLocation = false;
+	UseFirstPersonRotationForThirdPersonMuzzleFlash = false;
 	BulletWhizzingSoundVolumeBasedOnSpeed = true;
 	UseActorClassesForHitMarkers = 2;
 	UseFireArmsAnimation = 0;
@@ -160,6 +185,8 @@ AMultiplayerGun::AMultiplayerGun()
 	BulletPathDuration = 10.0f;
 	GunRelativeLocation = FVector(0.256082f, 0.156921, -1.547717);
 	GunRelativeRotation = FRotator(4.474539, -10.125100, -2.840817);
+	ThirdPersonGunRelativeLocation = FVector(0.256082f, 0.156921, -1.547717);
+	ThirdPersonGunRelativeRotation = FRotator(4.474539, -10.125100, -2.840817);
 	PlayerArmsRelativeLocation = FVector(-6.0f, -1.0f, -154.0f);
 	PlayerArmsRelativeRotation = FRotator(0.0f, -5.0f, 0.0f);
 	ADSArmsLocation = FVector(-13.523917, -15.856214, -150.601379);
@@ -167,6 +194,7 @@ AMultiplayerGun::AMultiplayerGun()
 	ZoomArmsLocation = FVector(-10.412415, -1.490295, -154.332474);
 	ZoomArmsRotation = FRotator(1.579085, -6.870842, 0.000002);
 	SocketName = "GripPoint";
+	ThirdPersonSocketName = "GripPoint";
 	CanCrumbleDestructibleMeshes = false;
 	CrumbleDestructibleMeshesWithEveryShotgunPellet = false;
 	DestructionSphereSize = FVector(0.25f, 0.25f, 0.25f);
@@ -250,6 +278,93 @@ void AMultiplayerGun::DestroySelf()
 	Destroy();
 }
 
+USceneComponent* AMultiplayerGun::GetFireSceneToUse()
+{
+	USceneComponent* FireSceneToUse;
+
+	if (GetUsingThirdPerson() == true)
+	{
+		FireSceneToUse = ThirdPersonFireSceneComponent;
+	}
+	else
+	{
+		FireSceneToUse = FireSceneComponent;
+	}
+
+	if (OwningPlayer)
+	{
+		if (OwningPlayer->IsLocallyControlled() || ReplicateMuzzleFlashLocation == true)
+		{
+			return FireSceneToUse;
+		}
+		else
+		{
+			return ThirdPersonFireSceneComponent;
+		}
+	}
+	else
+	{
+		return ThirdPersonFireSceneComponent;
+	}
+}
+
+USceneComponent* AMultiplayerGun::GetBulletCasingSceneToUse()
+{
+	USceneComponent* BulletCasingSceneToUse;
+
+	if (GetUsingThirdPerson() == true)
+	{
+		BulletCasingSceneToUse = ThirdPersonBulletCasingSceneComponent;
+	}
+	else
+	{
+		BulletCasingSceneToUse = BulletCasingSceneComponent;
+	}
+
+	if (OwningPlayer)
+	{
+		if (OwningPlayer->IsLocallyControlled())
+		{
+			return BulletCasingSceneToUse;
+		}
+		else
+		{
+			return ThirdPersonBulletCasingSceneComponent;
+		}
+	}
+	else
+	{
+		return ThirdPersonBulletCasingSceneComponent;
+	}
+}
+
+void AMultiplayerGun::SetUsingThirdPerson(bool NewUsingThirdPerson)
+{
+	if (HasAuthority())
+	{
+		MulticastSetUsingThirdPerson(NewUsingThirdPerson);
+	}
+	else
+	{
+		ServerSetUsingThirdPerson(NewUsingThirdPerson);
+	}
+}
+
+void AMultiplayerGun::ServerSetUsingThirdPerson_Implementation(bool NewUsingThirdPerson)
+{
+	MulticastSetUsingThirdPerson(NewUsingThirdPerson);
+}
+
+void AMultiplayerGun::MulticastSetUsingThirdPerson_Implementation(bool NewUsingThirdPerson)
+{
+	UsingThirdPerson = NewUsingThirdPerson;
+}
+
+bool AMultiplayerGun::GetUsingThirdPerson()
+{
+	return UsingThirdPerson;
+}
+
 void AMultiplayerGun::SetWasPickedup(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo)
 {
 	SetWasPickedup_BP(Pickedup, ComponentToAttachTo);
@@ -277,51 +392,98 @@ void AMultiplayerGun::MulticastSetWasPickedup_Implementation(bool Pickedup, UPri
 
 	if (Pickedup == true)
 	{
-		GetWorldTimerManager().ClearTimer(DespawnTimerHandle);
-
-		PickupBoxCollision->SetGenerateOverlapEvents(false);
-
-		AmountOfTimesPickedup++;
-
-		if (ComponentToAttachTo)
+		if (GetOwningPlayer())
 		{
-			if (GunMeshComponent)
-			{
-				GunMeshComponent->SetSimulatePhysics(false);
-				GunMeshComponent->SetCollisionProfileName("NoCollision");
-				GunMeshComponent->SetOnlyOwnerSee(true);
-			}
+			GetWorldTimerManager().ClearTimer(DespawnTimerHandle);
 
-			if (ThirdPersonGunMeshComponent)
+			if (GetOwningPlayerCast())
 			{
-				ThirdPersonGunMeshComponent->SetHiddenInGame(false);
-				ThirdPersonGunMeshComponent->SetVisibility(true);
-			}
-
-			if (SnapToSocket == 0)
-			{
-				AttachToComponent(ComponentToAttachTo, FAttachmentTransformRules::KeepWorldTransform, SocketName);
-
-				SetActorRelativeLocation(GunRelativeLocation);
-				SetActorRelativeRotation(GunRelativeRotation);
-			}
-			else if (SnapToSocket == 1)
-			{
-				AttachToComponent(ComponentToAttachTo, FAttachmentTransformRules::SnapToTargetNotIncludingScale, SocketName);
+				ApplyPerspective(GetOwningPlayerCast()->GetUsingThirdPerson());
 			}
 			else
 			{
-				AttachToComponent(ComponentToAttachTo, FAttachmentTransformRules::SnapToTargetIncludingScale, SocketName);
+				if (HasAuthority())
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Server GetOwningPlayerCast Failed MultiplayerGun.cpp:MulticastSetWasPickedup");
+				}
+				else
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Client GetOwningPlayerCast Failed MultiplayerGun.cpp:MulticastSetWasPickedup");
+				}
 			}
 
-			if (OwningPlayer)
+			PickupBoxCollision->SetGenerateOverlapEvents(false);
+
+			AmountOfTimesPickedup++;
+
+			if (ComponentToAttachTo)
 			{
+				if (GunMeshComponent)
+				{
+					GunMeshComponent->SetSimulatePhysics(false);
+					GunMeshComponent->SetCollisionProfileName("NoCollision");
+					GunMeshComponent->SetOnlyOwnerSee(true);
+				}
+
+				if (ThirdPersonGunMeshComponent)
+				{
+					ThirdPersonGunMeshComponent->SetHiddenInGame(false);
+					ThirdPersonGunMeshComponent->SetVisibility(true);
+				}
+
+				if (SnapToSocket == 0)
+				{
+					AttachToComponent(ComponentToAttachTo, FAttachmentTransformRules::KeepWorldTransform, SocketName);
+
+					SetActorRelativeLocation(GunRelativeLocation);
+					SetActorRelativeRotation(GunRelativeRotation);
+
+					if (GetOwningPlayerCast())
+					{
+						if (GetOwningPlayerCast()->GetPlayerModelMesh())
+						{
+							ThirdPersonGunMeshComponent->AttachToComponent(GetOwningPlayerCast()->GetPlayerModelMesh(), FAttachmentTransformRules::KeepWorldTransform, ThirdPersonSocketName);
+
+							ThirdPersonGunMeshComponent->SetRelativeLocation(ThirdPersonGunRelativeLocation);
+							ThirdPersonGunMeshComponent->SetRelativeRotation(ThirdPersonGunRelativeRotation);
+						}
+					}
+				}
+				else if (SnapToSocket == 1)
+				{
+					AttachToComponent(ComponentToAttachTo, FAttachmentTransformRules::SnapToTargetNotIncludingScale, SocketName);
+
+					if (GetOwningPlayerCast())
+					{
+						if (GetOwningPlayerCast()->GetPlayerModelMesh())
+						{
+							ThirdPersonGunMeshComponent->AttachToComponent(GetOwningPlayerCast()->GetPlayerModelMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, ThirdPersonSocketName);
+						}
+					}
+				}
+				else
+				{
+					AttachToComponent(ComponentToAttachTo, FAttachmentTransformRules::SnapToTargetIncludingScale, SocketName);
+
+					if (GetOwningPlayerCast())
+					{
+						if (GetOwningPlayerCast()->GetPlayerModelMesh())
+						{
+							ThirdPersonGunMeshComponent->AttachToComponent(GetOwningPlayerCast()->GetPlayerModelMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, ThirdPersonSocketName);
+						}
+					}
+				}
+
 				if (GetOwningPlayerCast())
 				{
 					GetOwningPlayerCast()->SetOverlappingInteractable(false);
 					GetOwningPlayerCast()->SetInteractableBeingOverlapped(nullptr);
 				}
 			}
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "OwningPlayer Invalid MultiplayerGun.cpp:SetWasPickedup");
 		}
 	}
 	else
@@ -330,6 +492,10 @@ void AMultiplayerGun::MulticastSetWasPickedup_Implementation(bool Pickedup, UPri
 
 		if (ThirdPersonGunMeshComponent)
 		{
+			ThirdPersonGunMeshComponent->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform, NAME_None);
+			ThirdPersonGunMeshComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
+			ThirdPersonGunMeshComponent->SetRelativeRotation(FRotator(0.0f, 0.0f, 0.0f));
+
 			ThirdPersonGunMeshComponent->SetHiddenInGame(true);
 			ThirdPersonGunMeshComponent->SetVisibility(false);
 		}
@@ -345,6 +511,8 @@ void AMultiplayerGun::MulticastSetWasPickedup_Implementation(bool Pickedup, UPri
 		}
 
 		SetActorHiddenInGame(false);
+		SetOwner(nullptr);
+		SetOwningPlayer(nullptr);
 
 		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerGun::SetPickupCollisionEnabled);
 
@@ -353,6 +521,11 @@ void AMultiplayerGun::MulticastSetWasPickedup_Implementation(bool Pickedup, UPri
 			GetWorldTimerManager().SetTimer(DespawnTimerHandle, this, &AMultiplayerGun::DestroySelf, TimeToDespawnAfterDropped, false, TimeToDespawnAfterDropped);
 		}
 	}
+}
+
+bool AMultiplayerGun::GetWasPickedup()
+{
+	return WasPickedup;
 }
 
 void AMultiplayerGun::SetPickupCollisionEnabled()
@@ -377,14 +550,45 @@ void AMultiplayerGun::MulticastSetPickupCollisionEnabled_Implementation()
 	PickupBoxCollision->SetGenerateOverlapEvents(true);
 }
 
+void AMultiplayerGun::SetOwningPlayer(APawn* NewOwningPlayer, int ReplicationMethod)
+{
+	if (ReplicationMethod == 1 || ReplicationMethod == 3)
+	{
+		ServerSetOwningPlayer(NewOwningPlayer, ReplicationMethod);
+	}
+	else if (ReplicationMethod == 2)
+	{
+		MulticastSetOwningPlayer(NewOwningPlayer);
+	}
+	else
+	{
+		OwningPlayer = NewOwningPlayer;
+		OwningPlayerCast = nullptr;
+	}
+}
+
+void AMultiplayerGun::ServerSetOwningPlayer_Implementation(APawn* NewOwningPlayer, int ReplicationMethod)
+{
+	if (ReplicationMethod == 3)
+	{
+		MulticastSetOwningPlayer(NewOwningPlayer);
+	}
+	else
+	{
+		OwningPlayer = NewOwningPlayer;
+		OwningPlayerCast = nullptr;
+	}
+}
+
+void AMultiplayerGun::MulticastSetOwningPlayer_Implementation(APawn* NewOwningPlayer)
+{
+	OwningPlayer = NewOwningPlayer;
+	OwningPlayerCast = nullptr;
+}
+
 APawn* AMultiplayerGun::GetOwningPlayer()
 {
 	return OwningPlayer;
-}
-
-void AMultiplayerGun::SetOwningPlayer(APawn* NewOwningPlayer)
-{
-	OwningPlayer = NewOwningPlayer;
 }
 
 void AMultiplayerGun::FireInput()
@@ -501,22 +705,64 @@ void AMultiplayerGun::Fire()
 				FVector FireLocation;
 				FRotator FireRotation;
 
-				if (GetOwningPlayerCast())
+				FVector TempVector = FVector::ZeroVector;
+				FRotator TempRotator = FRotator::ZeroRotator;
+
+				switch (FireFromBarrel)
 				{
-					if (GetOwningPlayerCast()->SpringArm->bUsePawnControlRotation == false)
+				case 1:
+					FireLocation = FireSceneComponent->GetComponentLocation();
+                    						
+					if (GetOwningPlayerCast())
 					{
-						FireLocation = GetOwningPlayerCast()->CameraComponent->GetComponentLocation();
-						FireRotation = GetOwningPlayerCast()->CameraComponent->GetComponentRotation();
+						FireRotation = GetOwningPlayerCast()->ReplicatedCameraRotation;
+					}
+					else
+					{
+						OwningPlayer->GetActorEyesViewPoint(TempVector, FireRotation);
+
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid MultiplayerGun.cpp:Fire 1");
+					}
+					
+					break;
+				case 2:
+					FireRotation = FireSceneComponent->GetComponentRotation();
+					
+					if (GetOwningPlayerCast())
+					{
+						FireLocation = GetOwningPlayerCast()->ReplicatedCameraLocation;
+					}
+					else
+					{
+						OwningPlayer->GetActorEyesViewPoint(FireLocation, TempRotator);
+
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid MultiplayerGun.cpp:Fire 2");
+					}
+					
+					break;
+				case 3:
+					FireLocation = FireSceneComponent->GetComponentLocation();
+					FireRotation = FireSceneComponent->GetComponentRotation();
+					break;
+				default:
+					if (GetOwningPlayerCast())
+					{
+						FireLocation = GetOwningPlayerCast()->ReplicatedCameraLocation;
+						FireRotation = GetOwningPlayerCast()->ReplicatedCameraRotation;
 					}
 					else
 					{
 						OwningPlayer->GetActorEyesViewPoint(FireLocation, FireRotation);
+
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid MultiplayerGun.cpp:Fire 3");
 					}
+					
+					break;
 				}
-				else
-				{
-					OwningPlayer->GetActorEyesViewPoint(FireLocation, FireRotation);
-				}
+
+				FireLocation += OwningPlayer->GetActorRightVector() * BulletSpawnLocationOffset.X;
+				FireLocation += OwningPlayer->GetActorForwardVector() * BulletSpawnLocationOffset.Y;
+				FireLocation += OwningPlayer->GetActorUpVector() * BulletSpawnLocationOffset.Z;
 
 				FVector TraceDirection;
 
@@ -572,7 +818,7 @@ void AMultiplayerGun::Fire()
 				TraceDirection = FireRotation.Vector();
 
 				// The reason to add this offset is because the GunHitEffectsReplication function won't execute when the gun is a projectile and the fire location is same as last time the gun was fired
-				GunHitEffectsReplication.FireLocation = FireLocation + FVector(FMath::RandRange(-0.5f, 0.5f), FMath::RandRange(-0.5f, 0.5f), FMath::RandRange(-0.5f, 0.5f));
+				GunHitEffectsReplication.FireLocation = GetFireSceneToUse()->GetComponentLocation() + FVector(FMath::RandRange(-0.25f, 0.25f), FMath::RandRange(-0.25f, 0.25f), FMath::RandRange(-0.25f, 0.25f));
 
 				if (UseProjectile == false)
 				{
@@ -1062,14 +1308,21 @@ void AMultiplayerGun::Fire()
 				{
 					if (FireMode != 3)
 					{
-						if (FireSound)
+						if (GetFireSceneToUse())
 						{
-							UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, FireSceneComponent->GetComponentLocation());
-						}
+							if (FireSound)
+							{
+								UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation());
+							}
 
-						if (MuzzleFlash)
+							if (MuzzleFlash)
+							{
+								UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+							}
+						}
+						else
 						{
-							UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, FireSceneComponent);
+							GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "FireSceneToUse Invalid MultiplayerGun.cpp:Fire");
 						}
 					}
 
@@ -1313,14 +1566,21 @@ void AMultiplayerGun::ShotgunFire()
 
 		if (FireMode != 3)
 		{
-			if (FireSound)
+			if (GetFireSceneToUse())
 			{
-				UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, FireSceneComponent->GetComponentLocation());
-			}
+				if (FireSound)
+				{
+					UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation());
+				}
 
-			if (MuzzleFlash)
+				if (MuzzleFlash)
+				{
+					UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+				}
+			}
+			else
 			{
-				UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, FireSceneComponent);
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "FireSceneToUse Invalid MultiplayerGun.cpp:Fire");
 			}
 		}
 
@@ -1439,6 +1699,11 @@ void AMultiplayerGun::OnRep_GunHitEffects()
 	if (BulletHitControllerVibration)
 	{
 		UGameplayStatics::SpawnForceFeedbackAtLocation(GetWorld(), BulletHitControllerVibration, GunHitEffectsReplication.HitLocation, FRotator::ZeroRotator, false, 1.0f, 0.0f, BulletHitControllerVibrationAttenuation);
+	}
+
+	if (MuzzleFlash && GetFireSceneToUse())
+	{
+		UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
 	}
 
 	USoundBase* ChosenHitSound;
@@ -1595,18 +1860,25 @@ void AMultiplayerGun::SpawnBulletCasing_Implementation()
 		SpawnParams.Owner = this;
 		SpawnParams.SpawnCollisionHandlingOverride = BulletCasingSpawnCollisionHandlingMethod;
 
-		if (AMultiplayerBulletCasing* SpawnedCasing = GetWorld()->SpawnActor<AMultiplayerBulletCasing>(BulletCasingToSpawn, BulletCasingSceneComponent->GetComponentLocation(), BulletCasingSceneComponent->GetComponentRotation(), SpawnParams))
+		if (GetBulletCasingSceneToUse())
 		{
-			SpawnedCasing->SetOwningGun(this);
-			SpawnedBulletCasings.EmplaceAt(0, SpawnedCasing);
-
-			if (BulletCasingInheritsVelocity == true && OwningPlayer)
+			if (AMultiplayerBulletCasing* SpawnedCasing = GetWorld()->SpawnActor<AMultiplayerBulletCasing>(BulletCasingToSpawn, GetBulletCasingSceneToUse()->GetComponentLocation(), GetBulletCasingSceneToUse()->GetComponentRotation(), SpawnParams))
 			{
-				if (ACharacter* CharacterCast = Cast<ACharacter>(OwningPlayer))
+				SpawnedCasing->SetOwningGun(this);
+				SpawnedBulletCasings.EmplaceAt(0, SpawnedCasing);
+
+				if (BulletCasingInheritsVelocity == true && OwningPlayer)
 				{
-					SpawnedCasing->BulletCasingMesh->AddImpulse(CharacterCast->GetCharacterMovement()->Velocity, NAME_None, true);
+					if (ACharacter* CharacterCast = Cast<ACharacter>(OwningPlayer))
+					{
+						SpawnedCasing->BulletCasingMesh->AddImpulse(CharacterCast->GetCharacterMovement()->Velocity, NAME_None, true);
+					}
 				}
 			}
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "BulletCasingSceneToUse Invalid MultiplayerGun.cpp:SpawnBulletCasing");
 		}
 	}
 }
@@ -1695,6 +1967,148 @@ void AMultiplayerGun::ServerStopFiring_Implementation(bool EvenCancelBurst)
 void AMultiplayerGun::CancelSmokeEffect()
 {
 	BulletsShotForSmokeEffect = 0;
+}
+
+void AMultiplayerGun::ApplyPerspective(bool ThirdPerson)
+{
+	SetUsingThirdPerson(ThirdPerson);
+
+	ApplyPerspective_BP(ThirdPerson);
+
+	if (ThirdPerson == true)
+	{
+		if (GetGunMesh())
+		{
+			GetGunMesh()->SetOwnerNoSee(true);
+
+			if (GetThirdPersonGunMesh())
+			{
+				TArray<USceneComponent*> FirstPersonComponents;
+				TArray<USceneComponent*> ThirdPersonComponents;
+
+				GetGunMesh()->GetChildrenComponents(false, FirstPersonComponents);
+				GetThirdPersonGunMesh()->GetChildrenComponents(false, ThirdPersonComponents);
+
+				if (FirstPersonComponents.Num() > 0)
+				{
+					for (auto& Component : FirstPersonComponents)
+					{
+						if (Component)
+						{
+							if (UPrimitiveComponent* ComponentCast = Cast<UPrimitiveComponent>(Component))
+							{
+								ComponentCast->SetOwnerNoSee(true);
+							}
+						}
+					}
+				}
+
+				if (ThirdPersonComponents.Num() > 0)
+				{
+					for (auto& Component : ThirdPersonComponents)
+					{
+						if (Component)
+						{
+							if (UPrimitiveComponent* ComponentCast = Cast<UPrimitiveComponent>(Component))
+							{
+								ComponentCast->SetOwnerNoSee(false);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if (GetThirdPersonGunMesh())
+		{
+			GetThirdPersonGunMesh()->SetOwnerNoSee(false);
+		}
+	}
+	else
+	{
+		if (GetGunMesh())
+		{
+			if (GetOwningPlayerCast())
+			{
+				GetGunMesh()->SetOwnerNoSee(GetOwningPlayerCast()->HideFirstPersonArmsAndGunInFirstPerson);
+			}
+			else
+			{
+				GetGunMesh()->SetOwnerNoSee(false);
+
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 1 MultiplayerGun.cpp:ApplyPerspective");
+			}
+
+			if (GetThirdPersonGunMesh())
+			{
+				TArray<USceneComponent*> FirstPersonComponents;
+				TArray<USceneComponent*> ThirdPersonComponents;
+
+				GetGunMesh()->GetChildrenComponents(false, FirstPersonComponents);
+				GetThirdPersonGunMesh()->GetChildrenComponents(false, ThirdPersonComponents);
+
+				if (FirstPersonComponents.Num() > 0)
+				{
+					for (auto& Component : FirstPersonComponents)
+					{
+						if (Component)
+						{
+							if (UPrimitiveComponent* ComponentCast = Cast<UPrimitiveComponent>(Component))
+							{
+								if (GetOwningPlayerCast())
+								{
+									ComponentCast->SetOwnerNoSee(GetOwningPlayerCast()->HideFirstPersonArmsAndGunInFirstPerson);
+								}
+								else
+								{
+									ComponentCast->SetOwnerNoSee(false);
+
+									GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 2 MultiplayerGun.cpp:ApplyPerspective");
+								}
+							}
+						}
+					}
+				}
+
+				if (ThirdPersonComponents.Num() > 0)
+				{
+					for (auto& Component : ThirdPersonComponents)
+					{
+						if (Component)
+						{
+							if (UPrimitiveComponent* ComponentCast = Cast<UPrimitiveComponent>(Component))
+							{
+								if (GetOwningPlayerCast())
+								{
+									ComponentCast->SetOwnerNoSee(GetOwningPlayerCast()->HideThirdPersonGunInFirstPerson);
+								}
+								else
+								{
+									ComponentCast->SetOwnerNoSee(true);
+
+									GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 3 MultiplayerGun.cpp:ApplyPerspective");
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if (GetThirdPersonGunMesh())
+		{
+			if (GetOwningPlayerCast())
+			{
+				GetThirdPersonGunMesh()->SetOwnerNoSee(GetOwningPlayerCast()->HideThirdPersonGunInFirstPerson);
+			}
+			else
+			{
+				GetThirdPersonGunMesh()->SetOwnerNoSee(true);
+				
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 4 MultiplayerGun.cpp:ApplyPerspective");
+			}
+		}
+	}
 }
 
 void AMultiplayerGun::SetCanShoot(bool NewCanShoot)
@@ -2135,6 +2549,11 @@ void AMultiplayerGun::Tick(float DeltaTime)
 	{
 		SpawnSmokeEffectWhenShooting = 1;
 	}
+
+	if (UseFirstPersonRotationForThirdPersonMuzzleFlash == true)
+	{
+		ThirdPersonFireSceneComponent->SetWorldRotation(FireSceneComponent->GetComponentRotation());
+	}
 }
 
 void AMultiplayerGun::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -2143,6 +2562,7 @@ void AMultiplayerGun::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 
 	DOREPLIFETIME(AMultiplayerGun, OwningPlayer);
 	DOREPLIFETIME(AMultiplayerGun, OwningPlayerCast);
+	DOREPLIFETIME(AMultiplayerGun, UsingThirdPerson);
 	DOREPLIFETIME(AMultiplayerGun, WasPickedup);
 	DOREPLIFETIME(AMultiplayerGun, AmmoInMagazine);
 	DOREPLIFETIME(AMultiplayerGun, ReserveAmmo);

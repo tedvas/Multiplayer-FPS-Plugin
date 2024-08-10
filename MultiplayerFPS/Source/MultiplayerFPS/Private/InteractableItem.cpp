@@ -6,6 +6,7 @@
 AInteractableItem::AInteractableItem()
 {
 	PickupBoxCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("Pickup Box Collision"));
+	PickupBoxCollision->SetIsReplicated(true);
 
 	PickupBoxCollision->OnComponentBeginOverlap.AddDynamic(this, &AInteractableItem::OnPickupBoxCollisionBeginOverlap);
 	PickupBoxCollision->OnComponentEndOverlap.AddDynamic(this, &AInteractableItem::OnPickupBoxCollisionEndOverlap);
@@ -39,4 +40,5 @@ void AInteractableItem::OnPickupBoxCollisionEndOverlap(UPrimitiveComponent* Over
 void AInteractableItem::Interact(APawn* InteractingPlayer)
 {
 	Interact_BP(InteractingPlayer);
+	OnInteract.Broadcast(InteractingPlayer);
 }

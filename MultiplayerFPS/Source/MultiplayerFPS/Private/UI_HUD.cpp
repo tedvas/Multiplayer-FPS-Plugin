@@ -320,7 +320,7 @@ ESlateVisibility UUI_HUD::CrosshairVisibility()
 
 	if (UIGetMultiplayerCharacter())
 	{
-		if (UIGetMultiplayerCharacter()->GetAmountOfWeapons() >= 1 && UIGetMultiplayerCharacter()->GetIsADSing() == false)
+		if (UIGetMultiplayerCharacter()->GetAmountOfWeapons() >= 1 && (UIGetMultiplayerCharacter()->GetIsADSing() == false || UIGetMultiplayerCharacter()->GetUsingThirdPerson() == true))
 		{
 			NewVisibility = ESlateVisibility::Visible;
 		}

@@ -30,6 +30,9 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	CameraComponent->SetupAttachment(SpringArm, NAME_None);
 	ArmsMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Arms Mesh"));
 	ArmsMesh->SetupAttachment(CameraComponent, NAME_None);
+	FirstPersonPlayerModel = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("First Person Player Model"));
+	FirstPersonPlayerModel->SetupAttachment(RootComponent, NAME_None);
+	FirstPersonPlayerModel->SetOnlyOwnerSee(true);
 
 
 	/* ************* Actor Components ************* */
@@ -58,6 +61,26 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 
 	IMC_Priority = 0;
 	CurrentFOV = 90.0f;
+	UsingThirdPerson = false;
+	FirstPersonSpringArmLength = 0.0f;
+	ThirdPersonSpringArmLength = 100.0f;
+	FirstPersonSpringArmLocation = FVector(0.0f, 35.0f, 0.0f);
+	ThirdPersonSpringArmLocation = FVector(0.0f, 40.0f, 60.0f);
+	AttachSpringArmToPlayerModelFirstPerson = true;
+	SocketToAttachSpringArmToFirstPerson = "head";
+	FirstPersonCameraLag = false;
+	FirstPersonCameraRotationLag = false;
+	FirstPersonCameraLagSpeed = 0.0f;
+	FirstPersonCameraRotationLagSpeed = 0.0f;
+	ThirdPersonCameraLag = true;
+	ThirdPersonCameraRotationLag = true;
+	ThirdPersonCameraLagSpeed = 30.0f;
+	ThirdPersonCameraRotationLagSpeed = 30.0f;
+	PerspectiveTransitionTime = 0.25f;
+	HidePlayerModelMeshInFirstPerson = true;
+	HideFirstPersonArmsAndGunInFirstPerson = false;
+	HideFirstPersonArmsWithoutWeapon = true;
+	HideThirdPersonGunInFirstPerson = true;
 	CanInteract = true;
 	InteractDistance = 175.0f;
 	OverlappingInteractable = false;
@@ -69,6 +92,7 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	CanReload = true;
 	IsReloading = false;
 	HoldingFireInput = false;
+	HoldingJumpInput = false;
 	HoldingAimInput = false;
 	CanAim = true;
 	AimingCancelsReload = true;
@@ -92,6 +116,7 @@ void AMultiplayerCharacter::ApplySettings()
 	SetupInput();
 	SetSensitivity();
 	SetFOV_BP(FieldOfView);
+	ApplyPerspectiveVisibility();
 }
 
 UMultiplayerHealthComponent* AMultiplayerCharacter::GetHealthComponent()
@@ -143,7 +168,7 @@ void AMultiplayerCharacter::ClientRemoveInput_Implementation()
 	}
 }
 
-void AMultiplayerCharacter::GetOwningController_Implementation()
+void AMultiplayerCharacter::SetOwningController_Implementation()
 {
 	if (APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), PlayerIndex))
 	{
@@ -162,7 +187,7 @@ void AMultiplayerCharacter::GetOwningController_Implementation()
 	}
 	else
 	{
-		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::GetOwningController);
+		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::SetOwningController);
 
 		if (!GetWorldTimerManager().IsTimerActive(GetPlayerControllerTimerHandle))
 		{
@@ -171,9 +196,78 @@ void AMultiplayerCharacter::GetOwningController_Implementation()
 	}
 }
 
+AMultiplayerPlayerController* AMultiplayerCharacter::GetOwningController()
+{
+	if (!OwningControllerCast)
+	{
+		if (OwningController)
+		{
+			OwningControllerCast = Cast<AMultiplayerPlayerController>(OwningController);
+
+			if (!OwningControllerCast)
+			{
+				if (HasAuthority())
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Server OwningControllerCast Failed MultiplayerCharacter.cpp:GetOwningController");
+				}
+				else
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Client OwningControllerCast Failed MultiplayerCharacter.cpp:GetOwningController");
+				}
+			}
+		}
+		else
+		{
+			if (HasAuthority())
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Server OwningController Invalid MultiplayerCharacter.cpp:GetOwningController");
+			}
+			else
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Client OwningController Invalid MultiplayerCharacter.cpp:GetOwningController");
+			}
+		}
+	}
+
+	return OwningControllerCast;
+}
+
 void AMultiplayerCharacter::PrintStringForOwningControllerInvalid()
 {
 	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Owning Controller Invalid After Trying On Tick For 10 Seconds, Still Retrying MultiplayerCharacter.cpp:GetOwningController_Implementation");
+}
+
+void AMultiplayerCharacter::ReplicateCameraTransform(FVector CameraLocation, FRotator CameraRotation)
+{
+	if (HasAuthority())
+	{
+		MulticastReplicateCameraTransform(CameraLocation, CameraRotation);
+	}
+	else
+	{
+		ServerReplicateCameraTransform(CameraLocation, CameraRotation);
+	}
+}
+
+void AMultiplayerCharacter::ServerReplicateCameraTransform_Implementation(FVector CameraLocation, FRotator CameraRotation)
+{
+	MulticastReplicateCameraTransform(CameraLocation, CameraRotation);
+}
+
+void AMultiplayerCharacter::MulticastReplicateCameraTransform_Implementation(FVector CameraLocation, FRotator CameraRotation)
+{
+	ReplicatedCameraLocation = CameraLocation;
+	ReplicatedCameraRotation = CameraRotation;
+}
+
+void AMultiplayerCharacter::ServerReplicateControlRotation_Implementation(FRotator ControlRotation)
+{
+	ReplicatedControlRotation = ControlRotation;
+
+	if (!IsLocallyControlled() && CameraComponent)
+	{
+		CameraComponent->SetWorldRotation(ReplicatedControlRotation);
+	}
 }
 
 void AMultiplayerCharacter::MulticastReplicateControlRotation_Implementation(FRotator ControlRotation)
@@ -210,11 +304,6 @@ void AMultiplayerCharacter::Look(const FInputActionValue& Value)
 	{
 		AddControllerYawInput(LookVector.X * CurrentMouseSensitivityX);
 		AddControllerPitchInput(LookVector.Y * CurrentMouseSensitivityY);
-
-		if (IsLocallyControlled())
-		{
-			MulticastReplicateControlRotation(GetControlRotation());
-		}
 	}
 }
 
@@ -234,6 +323,7 @@ void AMultiplayerCharacter::PressJump()
 	if (HoldButtonToJump == false)
 	{
 		Jump();
+		HoldingJumpInput = true;
 	}
 }
 
@@ -242,7 +332,14 @@ void AMultiplayerCharacter::HoldJump()
 	if (HoldButtonToJump == true)
 	{
 		Jump();
+		HoldingJumpInput = true;
 	}
+}
+
+void AMultiplayerCharacter::ReleaseJump()
+{
+	StopJumping();
+	HoldingJumpInput = false;
 }
 
 void AMultiplayerCharacter::SetSensitivity()
@@ -278,69 +375,81 @@ void AMultiplayerCharacter::SetSensitivity()
 
 void AMultiplayerCharacter::Interact()
 {
-	if (CanInteract == true && GetHealthComponent()->GetHealth() > 0)
+	if (GetHealthComponent())
 	{
-		FVector EyeLocation;
-		FRotator EyeRotation;
-		GetActorEyesViewPoint(EyeLocation, EyeRotation);
-
-		FVector TraceDirection = EyeRotation.Vector();
-		FVector TraceEnd = EyeLocation + (TraceDirection * InteractDistance);
-
-		FCollisionQueryParams QueryParams;
-		QueryParams.AddIgnoredActor(this);
-
-		for (auto& Weapon : AllWeapons)
+		if (CanInteract == true && GetHealthComponent()->GetHealth() > 0)
 		{
-			if (Weapon)
+			FVector EyeLocation;
+			FRotator EyeRotation;
+			GetActorEyesViewPoint(EyeLocation, EyeRotation);
+
+			FVector TraceDirection = EyeRotation.Vector();
+			FVector TraceEnd = EyeLocation + (TraceDirection * InteractDistance);
+
+			FCollisionQueryParams QueryParams;
+			QueryParams.AddIgnoredActor(this);
+
+			for (auto& Weapon : AllWeapons)
 			{
-				QueryParams.AddIgnoredActor(Weapon);
-			}
-		}
-
-		FHitResult Hit;
-		if (GetWorld()->LineTraceSingleByChannel(Hit, EyeLocation, TraceEnd, ECC_Visibility, QueryParams))
-		{
-			AActor* HitActor = Hit.GetActor();
-
-			if (AInteractableItem* InteractableItemCast = Cast<AInteractableItem>(HitActor))
-			{
-				if (InteractableItemCast->RunInteractOnServer == true)
+				if (Weapon)
 				{
-					ServerInteract(InteractableItemCast, InteractableItemCast->MulticastInteract);
-				}
-
-				if (InteractableItemCast->RunInteractOnClient == true)
-				{
-					ClientInteract(InteractableItemCast);
-				}
-
-				if (InteractableItemCast->RunInteractOnServer == false && InteractableItemCast->MulticastInteract == false && InteractableItemCast->RunInteractOnClient == false)
-				{
-					InteractReplicated(InteractableItemCast);
-				}
-			}
-		}
-		else if (OverlappingInteractable == true && InteractableBeingOverlapped)
-		{
-			AMultiplayerGun* GunCast = Cast<AMultiplayerGun>(InteractableBeingOverlapped);
-
-			if (!GunCast)
-			{
-				if (InteractableBeingOverlapped->RunInteractOnServer == true)
-				{
-					ServerInteract(InteractableBeingOverlapped, InteractableBeingOverlapped->MulticastInteract);
-				}
-
-				if (InteractableBeingOverlapped->RunInteractOnClient == true)
-				{
-					ClientInteract(InteractableBeingOverlapped);
+					QueryParams.AddIgnoredActor(Weapon);
 				}
 			}
 
-			if ((InteractableBeingOverlapped->RunInteractOnServer == false && InteractableBeingOverlapped->MulticastInteract == false && InteractableBeingOverlapped->RunInteractOnClient == false) || GunCast)
+			bool UseOverlappedItem = true;
+
+			FHitResult Hit;
+			if (GetWorld()->LineTraceSingleByChannel(Hit, EyeLocation, TraceEnd, ECC_Visibility, QueryParams))
 			{
-				InteractReplicated(InteractableBeingOverlapped);
+				AActor* HitActor = Hit.GetActor();
+
+				if (HitActor)
+				{
+					if (AInteractableItem* InteractableItemCast = Cast<AInteractableItem>(HitActor))
+					{
+						if (InteractableItemCast->RunInteractOnServer == true)
+						{
+							ServerInteract(InteractableItemCast, InteractableItemCast->MulticastInteract);
+							UseOverlappedItem = false;
+						}
+
+						if (InteractableItemCast->RunInteractOnClient == true)
+						{
+							ClientInteract(InteractableItemCast);
+							UseOverlappedItem = false;
+						}
+
+						if (InteractableItemCast->RunInteractOnServer == false && InteractableItemCast->MulticastInteract == false && InteractableItemCast->RunInteractOnClient == false)
+						{
+							InteractReplicated(InteractableItemCast);
+							UseOverlappedItem = false;
+						}
+					}
+				}
+			}
+			
+			if (OverlappingInteractable == true && InteractableBeingOverlapped && UseOverlappedItem == true)
+			{
+				AMultiplayerGun* GunCast = Cast<AMultiplayerGun>(InteractableBeingOverlapped);
+
+				if (!GunCast)
+				{
+					if (InteractableBeingOverlapped->RunInteractOnServer == true)
+					{
+						ServerInteract(InteractableBeingOverlapped, InteractableBeingOverlapped->MulticastInteract);
+					}
+
+					if (InteractableBeingOverlapped->RunInteractOnClient == true)
+					{
+						ClientInteract(InteractableBeingOverlapped);
+					}
+				}
+
+				if ((InteractableBeingOverlapped->RunInteractOnServer == false && InteractableBeingOverlapped->MulticastInteract == false && InteractableBeingOverlapped->RunInteractOnClient == false) || GunCast)
+				{
+					InteractReplicated(InteractableBeingOverlapped);
+				}
 			}
 		}
 	}
@@ -385,12 +494,23 @@ void AMultiplayerCharacter::ClientInteract_Implementation(AInteractableItem* Int
 
 void AMultiplayerCharacter::PickupItem(AInteractableItem* ItemToPickup)
 {
-	if (!HasAuthority())
+	if (HasAuthority())
+	{
+		MulticastPickupItem(ItemToPickup);
+	}
+	else
 	{
 		ServerPickupItem(ItemToPickup);
-		return;
 	}
+}
 
+void AMultiplayerCharacter::ServerPickupItem_Implementation(AInteractableItem* ItemToPickup)
+{
+	MulticastPickupItem(ItemToPickup);
+}
+
+void AMultiplayerCharacter::MulticastPickupItem_Implementation(AInteractableItem* ItemToPickup)
+{
 	if (ItemToPickup)
 	{
 		if (AMultiplayerGun* GunCast = Cast<AMultiplayerGun>(ItemToPickup))
@@ -406,14 +526,239 @@ void AMultiplayerCharacter::PickupItem(AInteractableItem* ItemToPickup)
 			}
 
 			GiveWeapon(nullptr, GunCast, true);
-			return;
 		}
 	}
 }
 
-void AMultiplayerCharacter::ServerPickupItem_Implementation(AInteractableItem* ItemToPickup)
+void AMultiplayerCharacter::SetUsingThirdPerson(bool NewUsingThirdPerson, bool SnapCameraLocation)
 {
-	PickupItem(ItemToPickup);
+	if (HasAuthority())
+	{
+		MulticastSetUsingThirdPerson(NewUsingThirdPerson);
+	}
+	else
+	{
+		ServerSetUsingThirdPerson(NewUsingThirdPerson);
+	}
+
+	ClientSetUsingThirdPerson(NewUsingThirdPerson, SnapCameraLocation);
+}
+
+void AMultiplayerCharacter::ClientSetUsingThirdPerson_Implementation(bool NewUsingThirdPerson, bool SnapCameraLocation)
+{
+	UsingThirdPerson = NewUsingThirdPerson;
+	
+	if (GetOwningController())
+	{
+		GetOwningController()->SetUsingThirdPerson(NewUsingThirdPerson);
+	}
+	else
+	{
+		if (HasAuthority())
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Server OwningController Invalid MultiplayerCharacter.cpp:MulticastSetUsingThirdPerson");
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Client OwningController Invalid MultiplayerCharacter.cpp:MulticastSetUsingThirdPerson");
+		}
+	}
+
+	if (SpringArm)
+	{
+		SwitchPerspective_BP(NewUsingThirdPerson, SnapCameraLocation);
+
+		FLatentActionInfo LatentActionInfo;
+		LatentActionInfo.CallbackTarget = this;
+
+		if (SnapCameraLocation == false)
+		{
+			if (NewUsingThirdPerson == true)
+			{
+				if (AttachSpringArmToPlayerModelFirstPerson == true)
+				{
+					SpringArm->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+				}
+				
+				UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocation, SpringArm->GetRelativeRotation(), true, true, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
+			}
+			else
+			{
+				if (AttachSpringArmToPlayerModelFirstPerson == true && FirstPersonPlayerModel)
+				{
+					SpringArm->AttachToComponent(FirstPersonPlayerModel, FAttachmentTransformRules::KeepWorldTransform, SocketToAttachSpringArmToFirstPerson);
+				}
+				
+				UKismetSystemLibrary::MoveComponentTo(SpringArm, FirstPersonSpringArmLocation, SpringArm->GetRelativeRotation(), true, true, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
+			}
+		}
+		else
+		{
+			if (NewUsingThirdPerson == true)
+			{
+				if (AttachSpringArmToPlayerModelFirstPerson == true)
+				{
+					SpringArm->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+				}
+				
+				SpringArm->SetRelativeLocation(ThirdPersonSpringArmLocation);
+				SpringArm->TargetArmLength = ThirdPersonSpringArmLength;
+			}
+			else
+			{
+				if (AttachSpringArmToPlayerModelFirstPerson == true && FirstPersonPlayerModel)
+				{
+					SpringArm->AttachToComponent(FirstPersonPlayerModel, FAttachmentTransformRules::KeepWorldTransform, SocketToAttachSpringArmToFirstPerson);
+				}
+				
+				SpringArm->SetRelativeLocation(FirstPersonSpringArmLocation);
+				SpringArm->TargetArmLength = FirstPersonSpringArmLength;
+			}
+		}
+
+		if (NewUsingThirdPerson == true)
+		{
+			ApplyPerspectiveVisibility();
+			
+			for (auto& Weapon : GetAllWeapons())
+			{
+				if (Weapon)
+				{
+					Weapon->ApplyPerspective(NewUsingThirdPerson);
+				}
+			}
+		}
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "SpringArm Component Invalid MultiplayerCharacter.cpp:SetUsingThirdPerson");
+	}
+}
+
+void AMultiplayerCharacter::ServerSetUsingThirdPerson_Implementation(bool NewUsingThirdPerson)
+{
+	MulticastSetUsingThirdPerson(NewUsingThirdPerson);
+}
+
+void AMultiplayerCharacter::MulticastSetUsingThirdPerson_Implementation(bool NewUsingThirdPerson)
+{
+	UsingThirdPerson = NewUsingThirdPerson;
+}
+
+void AMultiplayerCharacter::ApplyPerspectiveVisibility()
+{
+	if (GetUsingThirdPerson() == true)
+	{
+		if (GetPlayerModelMesh())
+		{
+			GetPlayerModelMesh()->SetOwnerNoSee(false);
+		}
+
+		if (ArmsMesh)
+		{
+			ArmsMesh->SetOwnerNoSee(true);
+		}
+
+		if (FirstPersonPlayerModel)
+		{
+			FirstPersonPlayerModel->SetOwnerNoSee(true);
+		}
+
+		if (SpringArm)
+		{
+			SpringArm->bEnableCameraLag = ThirdPersonCameraLag;
+			SpringArm->CameraLagSpeed = ThirdPersonCameraLagSpeed;
+			SpringArm->bEnableCameraRotationLag = ThirdPersonCameraRotationLag;
+			SpringArm->CameraRotationLagSpeed = ThirdPersonCameraRotationLagSpeed;
+		}
+	}
+	else
+	{
+		if (GetPlayerModelMesh())
+		{
+			GetPlayerModelMesh()->SetOwnerNoSee(HidePlayerModelMeshInFirstPerson);
+		}
+
+		if (ArmsMesh)
+		{
+			if (HideFirstPersonArmsWithoutWeapon == true && GetAmountOfWeapons() <= 0)
+			{
+				ArmsMesh->SetOwnerNoSee(true);
+			}
+			else
+			{
+				ArmsMesh->SetOwnerNoSee(HideFirstPersonArmsAndGunInFirstPerson);
+			}
+		}
+
+		if (FirstPersonPlayerModel)
+		{
+			if (FirstPersonPlayerModelMesh && GetAmountOfWeapons() > 0)
+			{
+				FirstPersonPlayerModel->SetSkeletalMesh(FirstPersonPlayerModelMesh);
+			}
+			else if (FirstPersonPlayerModelWithoutWeapons && GetAmountOfWeapons() <= 0)
+			{
+				FirstPersonPlayerModel->SetSkeletalMesh(FirstPersonPlayerModelWithoutWeapons);
+			}
+
+			FirstPersonPlayerModel->SetOwnerNoSee(false);
+		}
+
+		if (SpringArm)
+		{
+			SpringArm->bEnableCameraLag = FirstPersonCameraLag;
+			SpringArm->CameraLagSpeed = FirstPersonCameraLagSpeed;
+			SpringArm->bEnableCameraRotationLag = FirstPersonCameraRotationLag;
+			SpringArm->CameraRotationLagSpeed = FirstPersonCameraRotationLagSpeed;
+		}
+	}
+
+	if (GetUsingThirdPerson() == false)
+	{
+		for (auto& Weapon : GetAllWeapons())
+		{
+			if (Weapon)
+			{
+				Weapon->ApplyPerspective(GetUsingThirdPerson());
+			}
+		}
+	}
+
+	if (AppliedPerspectiveVisibilityOnClient == false)
+	{
+		AppliedPerspectiveVisibilityOnClient = true;
+		ClientApplyPerspectiveVisibility();
+	}
+	else
+	{
+		AppliedPerspectiveVisibilityOnClient = false;
+	}
+}
+
+void AMultiplayerCharacter::ClientApplyPerspectiveVisibility_Implementation()
+{
+	ApplyPerspectiveVisibility();
+}
+
+void AMultiplayerCharacter::ToggleThirdPerson()
+{
+	if (GetOwningController())
+	{
+		if (GetOwningController()->GetCanSwitchPerspective())
+		{
+			SetUsingThirdPerson(!GetUsingThirdPerson(), false);
+		}
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningController Invalid MultiplayerCharacter.cpp:ToggleThirdPerson");
+	}
+}
+
+bool AMultiplayerCharacter::GetUsingThirdPerson()
+{
+	return UsingThirdPerson;
 }
 
 void AMultiplayerCharacter::SetCanInteract(bool NewCanInteract)
@@ -483,16 +828,13 @@ void AMultiplayerCharacter::ClientOnTakeDamage_Implementation(int OldHealth, int
 {
 	if (OldHealth > NewHealth)
 	{
-		if (OwningController)
+		if (GetOwningController())
 		{
-			OwningController->ClientStartCameraShake(TakeDamageCameraShake);
+			GetOwningController()->ClientStartCameraShake(TakeDamageCameraShake);
 
 			if (TakeDamageControllerVibration)
 			{
-				if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(OwningController))
-				{
-					ControllerCast->VibrateController(TakeDamageControllerVibration, TakeDamageControllerVibrationTag);
-				}
+				GetOwningController()->VibrateController(TakeDamageControllerVibration, TakeDamageControllerVibrationTag);
 			}
 		}
 	}
@@ -512,15 +854,27 @@ void AMultiplayerCharacter::Die1()
 		ServerDie1();
 	}
 
-	if (GetPlayerModelMesh())
+	if (ArmsMesh)
 	{
 		ArmsMesh->SetHiddenInGame(true);
 		ArmsMesh->SetVisibility(false);
+	}
 
+	if (FirstPersonPlayerModel)
+	{
+		FirstPersonPlayerModel->SetHiddenInGame(true);
+		FirstPersonPlayerModel->SetVisibility(false);
+	}
+
+	if (SpringArm)
+	{
 		SpringArm->bUsePawnControlRotation = false;
 		SpringArm->AttachToComponent(GetPlayerModelMesh(), FAttachmentTransformRules::KeepWorldTransform, HeadSocketName);
 		SpringArm->SetRelativeLocationAndRotation(CameraHeadLocation, CameraHeadRotation);
+	}
 
+	if (GetPlayerModelMesh())
+	{
 		GetPlayerModelMesh()->SetSimulatePhysics(true);
 		GetPlayerModelMesh()->SetOwnerNoSee(false);
 	}
@@ -571,15 +925,15 @@ void AMultiplayerCharacter::ClientDie_Implementation()
 
 	if (OwningController)
 	{
-		if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(OwningController))
+		if (GetOwningController())
 		{
-			if (ControllerCast->DeathScreenClass)
+			if (GetOwningController()->DeathScreenClass)
 			{
-				ControllerCast->CreateUIWidget(ControllerCast->DeathScreenClass, 0, false, ControllerCast->HUD);
+				GetOwningController()->CreateUIWidget(GetOwningController()->DeathScreenClass, 0, false, GetOwningController()->HUD);
 
 				if (DieControllerVibration)
 				{
-					ControllerCast->VibrateController(DieControllerVibration, DieControllerVibrationTag);
+					GetOwningController()->VibrateController(DieControllerVibration, DieControllerVibrationTag);
 				}
 			}
 		}
@@ -821,16 +1175,9 @@ int AMultiplayerCharacter::GetAmountOfWeapons()
 
 int AMultiplayerCharacter::GetMaxWeaponAmount()
 {
-	if (OwningController)
+	if (GetOwningController())
 	{
-		if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(OwningController))
-		{
-			return ControllerCast->GetMaxWeaponAmount();
-		}
-		else
-		{
-			return -1;
-		}
+		return GetOwningController()->GetMaxWeaponAmount();
 	}
 	else
 	{
@@ -838,29 +1185,52 @@ int AMultiplayerCharacter::GetMaxWeaponAmount()
 	}
 }
 
-void AMultiplayerCharacter::SetWeaponVisibility(int WeaponVisibilityToChange, bool Visible, bool SetAllOtherWeaponsToOppositeVisibility)
+void AMultiplayerCharacter::SetWeaponVisibility(bool ApplyToAllWeapons, int WeaponVisibilityToChange, bool Visible, bool SetAllOtherWeaponsToOppositeVisibility, bool ApplyToArms)
 {
-	AMultiplayerGun* WeaponToCheck = GetWeapon(false, WeaponVisibilityToChange);
-
-	if (GetAmountOfWeapons() > 0 && AllWeapons.Contains(WeaponToCheck) == true)
+	if (ApplyToAllWeapons == true)
 	{
-		if (SetAllOtherWeaponsToOppositeVisibility == true)
+		for (auto& Weapon : GetAllWeapons())
 		{
-			for (int32 Index = 0; Index != AllWeapons.Num(); ++Index)
+			if (Weapon)
 			{
-				if (Index != WeaponVisibilityToChange)
-				{
-					if (AMultiplayerGun* Weapon = GetWeapon(false, Index))
-					{
-						Weapon->SetActorHiddenInGame(Visible);
-					}
-				}
+				Weapon->SetActorHiddenInGame(!Visible);
 			}
 		}
 
-		if (AMultiplayerGun* Weapon = GetWeapon(false, WeaponVisibilityToChange))
+		if (ApplyToArms == true && ArmsMesh)
 		{
-			Weapon->SetActorHiddenInGame(!Visible);
+			ArmsMesh->SetHiddenInGame(!Visible);
+		}
+	}
+	else
+	{
+		AMultiplayerGun* WeaponToCheck = GetWeapon(false, WeaponVisibilityToChange);
+
+		if (GetAmountOfWeapons() > 0 && AllWeapons.Contains(WeaponToCheck) == true)
+		{
+			if (SetAllOtherWeaponsToOppositeVisibility == true)
+			{
+				for (int32 Index = 0; Index != AllWeapons.Num(); ++Index)
+				{
+					if (Index != WeaponVisibilityToChange)
+					{
+						if (AMultiplayerGun* Weapon = GetWeapon(false, Index))
+						{
+							Weapon->SetActorHiddenInGame(Visible);
+						}
+					}
+				}
+			}
+
+			if (AMultiplayerGun* Weapon = GetWeapon(false, WeaponVisibilityToChange))
+			{
+				Weapon->SetActorHiddenInGame(!Visible);
+			}
+
+			if (ApplyToArms == true && ArmsMesh)
+			{
+				ArmsMesh->SetHiddenInGame(!Visible);
+			}
 		}
 	}
 }
@@ -870,50 +1240,50 @@ void AMultiplayerCharacter::GiveLoadout(TArray<TSubclassOf<AMultiplayerGun>> Loa
 	if (!HasAuthority())
 	{
 		ServerGiveLoadout(Loadout, MaxWeaponAmount);
+
+		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::ApplyPerspectiveVisibility);
+		
 		return;
 	}
 
 	TArray<TSubclassOf<AMultiplayerGun>> WeaponsToGive = Loadout;
 
-	if (Loadout.Num() <= GetMaxWeaponAmount() && OwningController)
+	if (Loadout.Num() <= GetMaxWeaponAmount() && GetOwningController())
 	{
-		if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(OwningController))
-		{
-			TArray<TSubclassOf<AMultiplayerGun>> AllPossibleWeapons = ControllerCast->AllWeaponClasses;
+		TArray<TSubclassOf<AMultiplayerGun>> AllPossibleWeapons = GetOwningController()->AllWeaponClasses;
 
-			if (ControllerCast->GetRandomizeUnselectedWeapons() == true)
+		if (GetOwningController()->GetRandomizeUnselectedWeapons() == true)
+		{
+			if ((GetOwningController()->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() < AllPossibleWeapons.Num()) || GetOwningController()->GetAvoidDuplicatesForRandomWeapons() == 2)
 			{
-				if ((ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() < AllPossibleWeapons.Num()) || ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 2)
+				for (auto& Weapon : WeaponsToGive)
 				{
-					for (auto& Weapon : WeaponsToGive)
+					if (Weapon)
 					{
-						if (Weapon)
-						{
-							AllPossibleWeapons.Remove(Weapon);
-						}
+						AllPossibleWeapons.Remove(Weapon);
 					}
 				}
+			}
 
-				for (int32 Index = Loadout.Num(); Index != GetMaxWeaponAmount(); ++Index)
+			for (int32 Index = Loadout.Num(); Index != GetMaxWeaponAmount(); ++Index)
+			{
+				int RandomWeaponIndex = FMath::RandRange(0, AllPossibleWeapons.Num() - 1);
+
+				if (AllPossibleWeapons.IsValidIndex(RandomWeaponIndex))
 				{
-					int RandomWeaponIndex = FMath::RandRange(0, AllPossibleWeapons.Num() - 1);
+					WeaponsToGive.Add(AllPossibleWeapons[RandomWeaponIndex]);
 
-					if (AllPossibleWeapons.IsValidIndex(RandomWeaponIndex))
+					if (GetOwningController()->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() < AllPossibleWeapons.Num())
 					{
-						WeaponsToGive.Add(AllPossibleWeapons[RandomWeaponIndex]);
-
-						if (ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() < AllPossibleWeapons.Num())
-						{
-							AllPossibleWeapons.RemoveAt(RandomWeaponIndex);
-						}
-						else if (ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() >= AllPossibleWeapons.Num() && GetAmountOfWeapons() < GetMaxWeaponAmount())
-						{
-							AllPossibleWeapons = ControllerCast->AllWeaponClasses;
-						}
-						else if (ControllerCast->GetAvoidDuplicatesForRandomWeapons() == 2)
-						{
-							AllPossibleWeapons.RemoveAt(RandomWeaponIndex);
-						}
+						AllPossibleWeapons.RemoveAt(RandomWeaponIndex);
+					}
+					else if (GetOwningController()->GetAvoidDuplicatesForRandomWeapons() == 1 && WeaponsToGive.Num() >= AllPossibleWeapons.Num() && GetAmountOfWeapons() < GetMaxWeaponAmount())
+					{
+						AllPossibleWeapons = GetOwningController()->AllWeaponClasses;
+					}
+					else if (GetOwningController()->GetAvoidDuplicatesForRandomWeapons() == 2)
+					{
+						AllPossibleWeapons.RemoveAt(RandomWeaponIndex);
 					}
 				}
 			}
@@ -923,7 +1293,7 @@ void AMultiplayerCharacter::GiveLoadout(TArray<TSubclassOf<AMultiplayerGun>> Loa
 	if (WeaponsToGive.Num() > MaxWeaponAmount)
 	{
 		TArray<int32> IndexesToRemove;
-		
+
 		for (int32 Index = MaxWeaponAmount; Index != WeaponsToGive.Num(); ++Index)
 		{
 			if (WeaponsToGive.IsValidIndex(Index) == true)
@@ -958,6 +1328,8 @@ void AMultiplayerCharacter::GiveLoadout(TArray<TSubclassOf<AMultiplayerGun>> Loa
 void AMultiplayerCharacter::ServerGiveLoadout_Implementation(const TArray<TSubclassOf<AMultiplayerGun>>& Loadout, int MaxWeaponAmount)
 {
 	GiveLoadout(Loadout, MaxWeaponAmount);
+
+	GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::ApplyPerspectiveVisibility);
 }
 
 void AMultiplayerCharacter::GiveWeapon_Implementation(TSubclassOf<AMultiplayerGun> WeaponToSpawn, AMultiplayerGun* WeaponToPickup, bool SwitchToNewWeapon)
@@ -975,8 +1347,8 @@ void AMultiplayerCharacter::GiveWeapon_Implementation(TSubclassOf<AMultiplayerGu
 
 		if (WeaponToPickup)
 		{
-			WeaponToPickup->SetOwner(this);
-			WeaponToPickup->SetOwningPlayer(this);
+			WeaponToPickup->Interact(this);
+			MulticastGiveWeapon(WeaponToPickup);
 			WeaponToPickup->SetWasPickedup(true, ArmsMesh);
 
 			AddWeapon(WeaponToPickup);
@@ -986,6 +1358,21 @@ void AMultiplayerCharacter::GiveWeapon_Implementation(TSubclassOf<AMultiplayerGu
 				SwitchWeapons(GetWeaponIndex(WeaponToPickup));
 			}
 		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "WeaponToPickup Invalid MultiplayerCharacter.cpp:GiveWeapon");
+		}
+
+		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::ApplyPerspectiveVisibility);
+	}
+}
+
+void AMultiplayerCharacter::MulticastGiveWeapon_Implementation(AMultiplayerGun* WeaponToPickup, bool SwitchToNewWeapon)
+{
+	if (WeaponToPickup)
+	{
+		WeaponToPickup->SetOwner(this);
+		WeaponToPickup->SetOwningPlayer(this);
 	}
 }
 
@@ -1143,6 +1530,8 @@ void AMultiplayerCharacter::MulticastRemoveWeapon_Implementation(bool RemoveAllW
 
 		AllWeapons.Empty();
 	}
+
+	GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::ApplyPerspectiveVisibility);
 }
 
 void AMultiplayerCharacter::RemoveWeaponPastIndex(int WeaponIndex, bool DestroyWeapon)
@@ -1208,7 +1597,7 @@ void AMultiplayerCharacter::MulticastNextWeapon_Implementation()
 
 		if (GetWeapon())
 		{
-			if (GetWeapon()->WeaponSwitchAnimation)
+			if (GetWeapon()->WeaponSwitchAnimation && ArmsMesh)
 			{
 				ArmsMesh->PlayAnimation(GetWeapon()->WeaponSwitchAnimation, false);
 
@@ -1216,15 +1605,62 @@ void AMultiplayerCharacter::MulticastNextWeapon_Implementation()
 				{
 					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
 				}
-				else
+				else if (!GetUsingThirdPerson())
 				{
 					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->WeaponSwitchAnimationMontage && ArmsMesh)
+			{
+				ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->WeaponSwitchAnimationMontage);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else if (!GetUsingThirdPerson())
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimationMontage->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->ThirdPersonWeaponSwitchAnimation && GetPlayerModelMesh())
+			{
+				GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonWeaponSwitchAnimation, false);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else if (GetUsingThirdPerson())
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimation->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage && ArmsMesh)
+			{
+				ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else if (!GetUsingThirdPerson())
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage->GetPlayLength();
 				}
 			}
 
 			if (GetWeapon()->SwitchOffGunAnimation && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
 			{
 				GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->SwitchOffGunAnimation, false);
+			}
+
+			if (GetWeapon()->SwitchOffGunAnimationMontage && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+			{
+				GetWeapon()->GunSkeletalMesh->GetAnimInstance()->Montage_Play(GetWeapon()->SwitchOffGunAnimationMontage);
 			}
 		}
 
@@ -1292,15 +1728,62 @@ void AMultiplayerCharacter::MulticastLastWeapon_Implementation()
 				{
 					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
 				}
-				else
+				else if (!GetUsingThirdPerson())
 				{
 					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->WeaponSwitchAnimationMontage && ArmsMesh)
+			{
+				ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->WeaponSwitchAnimationMontage);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else if (!GetUsingThirdPerson())
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimationMontage->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->ThirdPersonWeaponSwitchAnimation && GetPlayerModelMesh())
+			{
+				GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonWeaponSwitchAnimation, false);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else if (GetUsingThirdPerson())
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimation->GetPlayLength();
+				}
+			}
+
+			if (GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage && ArmsMesh)
+			{
+				ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage);
+
+				if (GetWeapon()->WeaponSwitchTime > 0.0f)
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+				}
+				else if (!GetUsingThirdPerson())
+				{
+					WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage->GetPlayLength();
 				}
 			}
 
 			if (GetWeapon()->SwitchOffGunAnimation && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
 			{
 				GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->SwitchOffGunAnimation, false);
+			}
+
+			if (GetWeapon()->SwitchOffGunAnimationMontage && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+			{
+				GetWeapon()->GunSkeletalMesh->GetAnimInstance()->Montage_Play(GetWeapon()->SwitchOffGunAnimationMontage);
 			}
 		}
 
@@ -1359,23 +1842,73 @@ void AMultiplayerCharacter::MulticastSwitchWeapons_Implementation(int Index, AMu
 
 		if (GetWeapon())
 		{
-			if (GetWeapon()->UseTwoWeaponSwitchAnimations == true && GetWeapon()->WeaponSwitchAnimation1)
+			if (GetWeapon()->UseTwoWeaponSwitchAnimations == true)
 			{
-				ArmsMesh->PlayAnimation(GetWeapon()->WeaponSwitchAnimation1, false);
+				if (GetWeapon()->WeaponSwitchAnimation1 && ArmsMesh)
+				{
+					ArmsMesh->PlayAnimation(GetWeapon()->WeaponSwitchAnimation1, false);
 
-				if (GetWeapon()->WeaponSwitchTime > 0.0f)
-				{
-					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation1->GetPlayLength();
+					}
 				}
-				else
+
+				if (GetWeapon()->WeaponSwitchAnimation1Montage && ArmsMesh)
 				{
-					WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation1->GetPlayLength();
+					ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->WeaponSwitchAnimation1Montage);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation1Montage->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->ThirdPersonWeaponSwitchAnimation1 && GetPlayerModelMesh())
+				{
+					GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonWeaponSwitchAnimation1, false);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimation1->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->ThirdPersonWeaponSwitchAnimation1Montage && GetPlayerModelMesh())
+				{
+					GetPlayerModelMesh()->GetAnimInstance()->Montage_Play(GetWeapon()->ThirdPersonWeaponSwitchAnimation1Montage);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimation1Montage->GetPlayLength();
+					}
 				}
 			}
 
 			if (GetWeapon()->SwitchToGunAnimation && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
 			{
 				GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->SwitchToGunAnimation, false);
+			}
+
+			if (GetWeapon()->SwitchToGunAnimationMontage && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+			{
+				GetWeapon()->GunSkeletalMesh->GetAnimInstance()->Montage_Play(GetWeapon()->SwitchToGunAnimationMontage);
 			}
 		}
 
@@ -1396,7 +1929,7 @@ void AMultiplayerCharacter::MulticastSwitchWeapons_Implementation(int Index, AMu
 			HitMarkerSurfaceSounds = Gun->GetHitMarkerSurfaceSounds();
 		}
 
-		SetWeaponVisibility(CurrentWeaponIndex, true);
+		SetWeaponVisibility(false, CurrentWeaponIndex, true);
 
 		GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, this, &AMultiplayerCharacter::SwitchWeapons1, WeaponSwitchAnimationTime, false, WeaponSwitchAnimationTime);
 	}
@@ -1426,6 +1959,7 @@ void AMultiplayerCharacter::MulticastSwitchWeapons1_Implementation()
 	if (GetAmountOfWeapons() > 0)
 	{
 		SetArmsAnimationMode();
+		SetPlayerModelAnimationMode();
 
 		SetCanShoot(true);
 		SetCanAim(true);
@@ -1449,6 +1983,210 @@ void AMultiplayerCharacter::MulticastSwitchWeapons1_Implementation()
 	}
 }
 
+void AMultiplayerCharacter::SwitchToWeapon1()
+{
+	if (CurrentWeaponIndex != 0 && AllWeapons.IsValidIndex(0))
+	{
+		GetWorldTimerManager().ClearTimer(SwitchWeaponsTimerHandle);
+
+		if (GetAmountOfWeapons() >= 2)
+		{
+			SetCanShoot(false);
+			SetCanAim(false);
+			StopFiring(true);
+			StopAiming();
+
+			float WeaponSwitchAnimationTime = 0.9f;
+
+			if (GetWeapon())
+			{
+				if (GetWeapon()->WeaponSwitchAnimation)
+				{
+					ArmsMesh->PlayAnimation(GetWeapon()->WeaponSwitchAnimation, false);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->WeaponSwitchAnimationMontage && ArmsMesh)
+				{
+					ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->WeaponSwitchAnimationMontage);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimationMontage->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->ThirdPersonWeaponSwitchAnimation && GetPlayerModelMesh())
+				{
+					GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonWeaponSwitchAnimation, false);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimation->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage && ArmsMesh)
+				{
+					ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->SwitchOffGunAnimation && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+				{
+					GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->SwitchOffGunAnimation, false);
+				}
+
+				if (GetWeapon()->SwitchOffGunAnimationMontage && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+				{
+					GetWeapon()->GunSkeletalMesh->GetAnimInstance()->Montage_Play(GetWeapon()->SwitchOffGunAnimationMontage);
+				}
+			}
+
+			CurrentWeaponIndex = 0;
+
+			if (IsSwitchingWeapons == false && IsReloading == false)
+			{
+				IsSwitchingWeapons = true;
+
+				SwitchWeaponsTimerDelegate.BindUFunction(this, "SwitchWeapons", CurrentWeaponIndex, nullptr);
+				GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, SwitchWeaponsTimerDelegate, WeaponSwitchAnimationTime, false);
+			}
+			else
+			{
+				CancelReload(false);
+				SwitchWeapons(CurrentWeaponIndex);
+			}
+		}
+	}
+}
+
+void AMultiplayerCharacter::SwitchToWeapon2()
+{
+	if (CurrentWeaponIndex != 1 && AllWeapons.IsValidIndex(1))
+	{
+		GetWorldTimerManager().ClearTimer(SwitchWeaponsTimerHandle);
+
+		if (GetAmountOfWeapons() >= 2)
+		{
+			SetCanShoot(false);
+			SetCanAim(false);
+			StopFiring(true);
+			StopAiming();
+
+			float WeaponSwitchAnimationTime = 0.9f;
+
+			if (GetWeapon())
+			{
+				if (GetWeapon()->WeaponSwitchAnimation)
+				{
+					ArmsMesh->PlayAnimation(GetWeapon()->WeaponSwitchAnimation, false);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimation->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->WeaponSwitchAnimationMontage && ArmsMesh)
+				{
+					ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->WeaponSwitchAnimationMontage);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchAnimationMontage->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->ThirdPersonWeaponSwitchAnimation && GetPlayerModelMesh())
+				{
+					GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonWeaponSwitchAnimation, false);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimation->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage && ArmsMesh)
+				{
+					ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage);
+
+					if (GetWeapon()->WeaponSwitchTime > 0.0f)
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->WeaponSwitchTime;
+					}
+					else if (!GetUsingThirdPerson())
+					{
+						WeaponSwitchAnimationTime = GetWeapon()->ThirdPersonWeaponSwitchAnimationMontage->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->SwitchOffGunAnimation && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+				{
+					GetWeapon()->GunSkeletalMesh->PlayAnimation(GetWeapon()->SwitchOffGunAnimation, false);
+				}
+
+				if (GetWeapon()->SwitchOffGunAnimationMontage && GetWeapon()->UseSkeletalMesh == true && GetWeapon()->GunSkeletalMesh)
+				{
+					GetWeapon()->GunSkeletalMesh->GetAnimInstance()->Montage_Play(GetWeapon()->SwitchOffGunAnimationMontage);
+				}
+			}
+
+			CurrentWeaponIndex = 1;
+
+			if (IsSwitchingWeapons == false && IsReloading == false)
+			{
+				IsSwitchingWeapons = true;
+
+				SwitchWeaponsTimerDelegate.BindUFunction(this, "SwitchWeapons", CurrentWeaponIndex, nullptr);
+				GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, SwitchWeaponsTimerDelegate, WeaponSwitchAnimationTime, false);
+			}
+			else
+			{
+				CancelReload(false);
+				SwitchWeapons(CurrentWeaponIndex);
+			}
+		}
+	}
+}
+
 void AMultiplayerCharacter::PressFireInput()
 {
 	HoldingFireInput = true;
@@ -1465,6 +2203,9 @@ void AMultiplayerCharacter::ReleaseFireInput()
 
 void AMultiplayerCharacter::Fire()
 {
+	ServerReplicateControlRotation(GetControlRotation());
+	MulticastReplicateControlRotation(GetControlRotation());
+	
 	if (GetAmountOfWeapons() > 0)
 	{
 		if (GetCanShoot() == true)
@@ -1788,13 +2529,25 @@ void AMultiplayerCharacter::MulticastReload_Implementation()
 
 					IsReloading = true;
 
-					if (Weapon->ReloadAnimation && Weapon->GetAmmoInMagazine() > 0)
+					if (ArmsMesh)
 					{
-						ArmsMesh->PlayAnimation(Weapon->ReloadAnimation, false);
-					}
-					else if (Weapon->ReloadEmptyAnimation && Weapon->GetAmmoInMagazine() <= 0)
-					{
-						ArmsMesh->PlayAnimation(Weapon->ReloadEmptyAnimation, false);
+						if (Weapon->ReloadAnimation && Weapon->GetAmmoInMagazine() > 0)
+						{
+							ArmsMesh->PlayAnimation(Weapon->ReloadAnimation, false);
+						}
+						else if (Weapon->ReloadEmptyAnimation && Weapon->GetAmmoInMagazine() <= 0)
+						{
+							ArmsMesh->PlayAnimation(Weapon->ReloadEmptyAnimation, false);
+						}
+
+						if (Weapon->ReloadAnimationMontage && Weapon->GetAmmoInMagazine() > 0)
+						{
+							ArmsMesh->GetAnimInstance()->Montage_Play(Weapon->ReloadAnimationMontage);
+						}
+						else if (Weapon->ReloadEmptyAnimationMontage && Weapon->GetAmmoInMagazine() <= 0)
+						{
+							ArmsMesh->GetAnimInstance()->Montage_Play(Weapon->ReloadEmptyAnimationMontage);
+						}
 					}
 
 					if (Weapon->UseSkeletalMesh == true && Weapon->GunSkeletalMesh)
@@ -1802,10 +2555,39 @@ void AMultiplayerCharacter::MulticastReload_Implementation()
 						if (Weapon->GetAmmoInMagazine() > 0 && Weapon->ReloadGunAnimation)
 						{
 							Weapon->GunSkeletalMesh->PlayAnimation(Weapon->ReloadGunAnimation, false);
+
+							if (Weapon->UseSkeletalMesh == true && Weapon->ThirdPersonGunSkeletalMesh)
+							{
+								Weapon->ThirdPersonGunSkeletalMesh->PlayAnimation(Weapon->ReloadGunAnimation, false);
+							}
 						}
 						else if (Weapon->GetAmmoInMagazine() <= 0 && Weapon->ReloadEmptyGunAnimation)
 						{
 							Weapon->GunSkeletalMesh->PlayAnimation(Weapon->ReloadEmptyGunAnimation, false);
+
+							if (Weapon->UseSkeletalMesh == true && Weapon->ReloadEmptyGunAnimation)
+							{
+								Weapon->ThirdPersonGunSkeletalMesh->PlayAnimation(Weapon->ReloadEmptyGunAnimation, false);
+							}
+						}
+
+						if (Weapon->GetAmmoInMagazine() > 0 && Weapon->ReloadGunAnimationMontage)
+						{
+							Weapon->GunSkeletalMesh->GetAnimInstance()->Montage_Play(Weapon->ReloadGunAnimationMontage);
+
+							if (Weapon->UseSkeletalMesh == true && Weapon->ReloadGunAnimationMontage)
+							{
+								Weapon->ThirdPersonGunSkeletalMesh->PlayAnimation(Weapon->ReloadGunAnimationMontage, false);
+							}
+						}
+						else if (Weapon->GetAmmoInMagazine() <= 0 && Weapon->ReloadEmptyGunAnimationMontage)
+						{
+							Weapon->GunSkeletalMesh->GetAnimInstance()->Montage_Play(Weapon->ReloadEmptyGunAnimationMontage);
+
+							if (Weapon->UseSkeletalMesh == true && Weapon->ReloadEmptyGunAnimationMontage)
+							{
+								Weapon->ThirdPersonGunSkeletalMesh->PlayAnimation(Weapon->ReloadEmptyGunAnimationMontage, false);
+							}
 						}
 					}
 
@@ -1819,16 +2601,117 @@ void AMultiplayerCharacter::MulticastReload_Implementation()
 						{
 							GetPlayerModelMesh()->PlayAnimation(Weapon->ThirdPersonReloadEmptyAnimation, false);
 						}
+
+						if (Weapon->ThirdPersonReloadAnimationMontage && Weapon->GetAmmoInMagazine() > 0)
+						{
+							GetPlayerModelMesh()->GetAnimInstance()->Montage_Play(Weapon->ThirdPersonReloadAnimationMontage);
+						}
+						else if (Weapon->ThirdPersonReloadEmptyAnimationMontage && Weapon->GetAmmoInMagazine() <= 0)
+						{
+							GetPlayerModelMesh()->GetAnimInstance()->Montage_Play(Weapon->ThirdPersonReloadEmptyAnimationMontage);
+						}
+					}
+					else
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "PlayerModelMesh Invalid MultiplayerCharacter.cpp:MulticastReload");
 					}
 
+					float ReloadTimerLength = Weapon->ReloadSpeed;
+					int AmmoInMagazine = Weapon->GetAmmoInMagazine();
+					
+					if (Weapon->ReloadSpeed >= -1 && Weapon->ReloadSpeed < 0)
+					{
+						if (GetUsingThirdPerson() == false)
+						{
+							if (AmmoInMagazine > 0)
+							{
+								if (Weapon->ReloadAnimation)
+								{
+									ReloadTimerLength = Weapon->ReloadAnimation->GetPlayLength();
+								}
+
+								if (Weapon->ReloadAnimationMontage)
+								{
+									ReloadTimerLength = Weapon->ReloadAnimationMontage->GetPlayLength();
+								}
+							}
+							else
+							{
+								if (Weapon->ReloadEmptyAnimation)
+								{
+									ReloadTimerLength = Weapon->ReloadEmptyAnimation->GetPlayLength();
+								}
+
+								if (Weapon->ReloadEmptyAnimationMontage)
+								{
+									ReloadTimerLength = Weapon->ReloadEmptyAnimationMontage->GetPlayLength();
+								}
+							}
+						}
+						else
+						{
+							if (AmmoInMagazine > 0)
+							{
+								if (Weapon->ThirdPersonReloadAnimation)
+								{
+									ReloadTimerLength = Weapon->ThirdPersonReloadAnimation->GetPlayLength();
+								}
+
+								if (Weapon->ThirdPersonReloadAnimationMontage)
+								{
+									ReloadTimerLength = Weapon->ThirdPersonReloadAnimationMontage->GetPlayLength();
+								}
+							}
+							else
+							{
+								if (Weapon->ThirdPersonReloadEmptyAnimation)
+								{
+									ReloadTimerLength = Weapon->ThirdPersonReloadEmptyAnimation->GetPlayLength();
+								}
+
+								if (Weapon->ThirdPersonReloadEmptyAnimationMontage)
+								{
+									ReloadTimerLength = Weapon->ThirdPersonReloadEmptyAnimationMontage->GetPlayLength();
+								}
+							}
+						}
+					}
+					else if (Weapon->ReloadSpeed >= -2 && Weapon->ReloadSpeed < -1)
+					{
+						if (AmmoInMagazine > 0)
+						{
+							if (Weapon->ReloadGunAnimation)
+							{
+								ReloadTimerLength = Weapon->ReloadGunAnimation->GetPlayLength();
+							}
+
+							if (Weapon->ReloadGunAnimationMontage)
+							{
+								ReloadTimerLength = Weapon->ReloadGunAnimationMontage->GetPlayLength();
+							}
+						}
+						else
+						{
+							if (Weapon->ReloadEmptyGunAnimation)
+							{
+								ReloadTimerLength = Weapon->ReloadEmptyGunAnimation->GetPlayLength();
+							}
+
+							if (Weapon->ReloadEmptyGunAnimationMontage)
+							{
+								ReloadTimerLength = Weapon->ReloadEmptyGunAnimationMontage->GetPlayLength();
+							}
+						}
+					}
+				
 					if (ReloadCharacterSound)
 					{
 						UGameplayStatics::SpawnSoundAttached(ReloadCharacterSound, ArmsMesh, Weapon->GetSocketName(), FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, true);
 					}
 
-					if (Weapon->ReloadSpeed > 0)
+					if (ReloadTimerLength > 0)
 					{
-						GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AMultiplayerCharacter::Reload1, Weapon->ReloadSpeed, false, Weapon->ReloadSpeed);
+						GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AMultiplayerCharacter::Reload1, ReloadTimerLength, false, ReloadTimerLength);
 					}
 					else
 					{
@@ -1836,6 +2719,10 @@ void AMultiplayerCharacter::MulticastReload_Implementation()
 					}
 				}
 			}
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Current Weapon Invalid MultiplayerCharacter.cpp:MulticastReload");
 		}
 	}
 }
@@ -1868,7 +2755,7 @@ void AMultiplayerCharacter::MulticastReload1_Implementation()
 	{
 		int AmmoInMagazine = Weapon->GetAmmoInMagazine();
 
-		if (Weapon->UseTwoReloadAnimations == true)
+		if (Weapon->UseTwoReloadAnimations == true && ArmsMesh)
 		{
 			if (Weapon->ReloadAnimation1 && Weapon->GetAmmoInMagazine() > 0)
 			{
@@ -1879,55 +2766,149 @@ void AMultiplayerCharacter::MulticastReload1_Implementation()
 				ArmsMesh->PlayAnimation(Weapon->ReloadEmptyAnimation1, false);
 			}
 
-			if (GetPlayerModelMesh())
+			if (Weapon->ReloadAnimation1Montage && Weapon->GetAmmoInMagazine() > 0)
 			{
-				if (Weapon->ThirdPersonReloadAnimation1 && Weapon->GetAmmoInMagazine() > 0)
-				{
-					GetPlayerModelMesh()->PlayAnimation(Weapon->ThirdPersonReloadAnimation1, false);
-				}
-				else if (Weapon->ThirdPersonReloadEmptyAnimation1 && Weapon->GetAmmoInMagazine() <= 0)
-				{
-					GetPlayerModelMesh()->PlayAnimation(Weapon->ThirdPersonReloadEmptyAnimation1, false);
-				}
+				ArmsMesh->GetAnimInstance()->Montage_Play(Weapon->ReloadAnimation1Montage);
+			}
+			else if (Weapon->ReloadEmptyAnimation1Montage && Weapon->GetAmmoInMagazine() <= 0)
+			{
+				ArmsMesh->GetAnimInstance()->Montage_Play(Weapon->ReloadEmptyAnimation1Montage);
+			}
+		}
+		
+		if (Weapon->UseTwoThirdPersonReloadAnimations == true && GetPlayerModelMesh())
+		{
+			if (Weapon->ThirdPersonReloadAnimation1 && Weapon->GetAmmoInMagazine() > 0)
+			{
+				GetPlayerModelMesh()->PlayAnimation(Weapon->ThirdPersonReloadAnimation1, false);
+			}
+			else if (Weapon->ThirdPersonReloadEmptyAnimation1 && Weapon->GetAmmoInMagazine() <= 0)
+			{
+				GetPlayerModelMesh()->PlayAnimation(Weapon->ThirdPersonReloadEmptyAnimation1, false);
+			}
+
+			if (Weapon->ThirdPersonReloadAnimation1Montage && Weapon->GetAmmoInMagazine() > 0)
+			{
+				GetPlayerModelMesh()->GetAnimInstance()->Montage_Play(Weapon->ThirdPersonReloadAnimation1Montage);
+			}
+			else if (Weapon->ThirdPersonReloadEmptyAnimation1Montage && Weapon->GetAmmoInMagazine() <= 0)
+			{
+				GetPlayerModelMesh()->GetAnimInstance()->Montage_Play(Weapon->ThirdPersonReloadEmptyAnimation1Montage);
 			}
 		}
 
 		Weapon->Reload();
 
 		bool StartTimer = false;
-		float TimerLength = 0.0f;
+		float ReloadTimerLength = Weapon->ReloadSpeed1;
 
 		if (Weapon->ReloadSpeed1 > 0)
 		{
 			StartTimer = true;
-			TimerLength = Weapon->ReloadSpeed1;
+			ReloadTimerLength = Weapon->ReloadSpeed1;
 		}
 		else if (Weapon->ReloadSpeed1 >= -1 && Weapon->ReloadSpeed1 < 0)
 		{
-			if (AmmoInMagazine > 0)
+			if (GetUsingThirdPerson() == false)
 			{
-				if (Weapon->UseTwoReloadAnimations == true && Weapon->ReloadAnimation1)
+				if (AmmoInMagazine > 0)
 				{
-					StartTimer = true;
-					TimerLength = Weapon->ReloadAnimation1->GetPlayLength();
+					if (Weapon->UseTwoReloadAnimations == true && Weapon->ReloadAnimation1)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ReloadAnimation1->GetPlayLength();
+					}
+					else if (Weapon->UseTwoReloadAnimations == false && Weapon->ReloadAnimation)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ReloadAnimation->GetPlayLength();
+					}
+
+					if (Weapon->UseTwoReloadAnimations == true && Weapon->ReloadAnimation1Montage)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ReloadAnimation1Montage->GetPlayLength();
+					}
+					else if (Weapon->UseTwoReloadAnimations == false && Weapon->ReloadAnimationMontage)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ReloadAnimationMontage->GetPlayLength();
+					}
 				}
-				else if (Weapon->UseTwoReloadAnimations == false && Weapon->ReloadAnimation)
+				else
 				{
-					StartTimer = true;
-					TimerLength = Weapon->ReloadAnimation->GetPlayLength();
+					if (Weapon->UseTwoReloadAnimations == true && Weapon->ReloadEmptyAnimation1)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ReloadEmptyAnimation1->GetPlayLength();
+					}
+					else if (Weapon->UseTwoReloadAnimations == false && Weapon->ReloadEmptyAnimation)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ReloadEmptyAnimation->GetPlayLength();
+					}
+
+					if (Weapon->UseTwoReloadAnimations == true && Weapon->ReloadEmptyAnimation1Montage)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ReloadEmptyAnimation1Montage->GetPlayLength();
+					}
+					else if (Weapon->UseTwoReloadAnimations == false && Weapon->ReloadEmptyAnimationMontage)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ReloadEmptyAnimationMontage->GetPlayLength();
+					}
 				}
 			}
 			else
 			{
-				if (Weapon->UseTwoReloadAnimations == true && Weapon->ReloadEmptyAnimation1)
+				if (AmmoInMagazine > 0)
 				{
-					StartTimer = true;
-					TimerLength = Weapon->ReloadEmptyAnimation1->GetPlayLength();
+					if (Weapon->UseTwoReloadAnimations == true && Weapon->ThirdPersonReloadAnimation1)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ThirdPersonReloadAnimation1->GetPlayLength();
+					}
+					else if (Weapon->UseTwoReloadAnimations == false && Weapon->ThirdPersonReloadAnimation)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ThirdPersonReloadAnimation->GetPlayLength();
+					}
+
+					if (Weapon->UseTwoReloadAnimations == true && Weapon->ThirdPersonReloadAnimation1Montage)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ThirdPersonReloadAnimation1Montage->GetPlayLength();
+					}
+					else if (Weapon->UseTwoReloadAnimations == false && Weapon->ThirdPersonReloadAnimationMontage)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ThirdPersonReloadAnimationMontage->GetPlayLength();
+					}
 				}
-				else if (Weapon->UseTwoReloadAnimations == false && Weapon->ReloadEmptyAnimation)
+				else
 				{
-					StartTimer = true;
-					TimerLength = Weapon->ReloadEmptyAnimation->GetPlayLength();
+					if (Weapon->UseTwoReloadAnimations == true && Weapon->ThirdPersonReloadEmptyAnimation1)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ThirdPersonReloadEmptyAnimation1->GetPlayLength();
+					}
+					else if (Weapon->UseTwoReloadAnimations == false && Weapon->ThirdPersonReloadEmptyAnimation)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ThirdPersonReloadEmptyAnimation->GetPlayLength();
+					}
+
+					if (Weapon->UseTwoReloadAnimations == true && Weapon->ThirdPersonReloadEmptyAnimation1Montage)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ThirdPersonReloadEmptyAnimation1Montage->GetPlayLength();
+					}
+					else if (Weapon->UseTwoReloadAnimations == false && Weapon->ThirdPersonReloadEmptyAnimationMontage)
+					{
+						StartTimer = true;
+						ReloadTimerLength = Weapon->ThirdPersonReloadEmptyAnimationMontage->GetPlayLength();
+					}
 				}
 			}
 		}
@@ -1938,7 +2919,13 @@ void AMultiplayerCharacter::MulticastReload1_Implementation()
 				if (Weapon->ReloadGunAnimation)
 				{
 					StartTimer = true;
-					TimerLength = Weapon->ReloadGunAnimation->GetPlayLength();
+					ReloadTimerLength = Weapon->ReloadGunAnimation->GetPlayLength();
+				}
+
+				if (Weapon->ReloadGunAnimationMontage)
+				{
+					StartTimer = true;
+					ReloadTimerLength = Weapon->ReloadGunAnimationMontage->GetPlayLength();
 				}
 			}
 			else
@@ -1946,43 +2933,20 @@ void AMultiplayerCharacter::MulticastReload1_Implementation()
 				if (Weapon->ReloadEmptyGunAnimation)
 				{
 					StartTimer = true;
-					TimerLength = Weapon->ReloadEmptyGunAnimation->GetPlayLength();
+					ReloadTimerLength = Weapon->ReloadEmptyGunAnimation->GetPlayLength();
 				}
-			}
-		}
-		else if (Weapon->ReloadSpeed1 >= -3 && Weapon->ReloadSpeed1 < -2)
-		{
-			if (AmmoInMagazine > 0)
-			{
-				if (Weapon->UseTwoReloadAnimations == true && Weapon->ThirdPersonReloadAnimation1)
+
+				if (Weapon->ReloadEmptyGunAnimationMontage)
 				{
 					StartTimer = true;
-					TimerLength = Weapon->ThirdPersonReloadAnimation1->GetPlayLength();
-				}
-				else if (Weapon->UseTwoReloadAnimations == false && Weapon->ThirdPersonReloadAnimation)
-				{
-					StartTimer = true;
-					TimerLength = Weapon->ThirdPersonReloadAnimation->GetPlayLength();
-				}
-			}
-			else
-			{
-				if (Weapon->UseTwoReloadAnimations == true && Weapon->ThirdPersonReloadEmptyAnimation1)
-				{
-					StartTimer = true;
-					TimerLength = Weapon->ThirdPersonReloadEmptyAnimation1->GetPlayLength();
-				}
-				else if (Weapon->UseTwoReloadAnimations == false && Weapon->ThirdPersonReloadEmptyAnimation)
-				{
-					StartTimer = true;
-					TimerLength = Weapon->ThirdPersonReloadEmptyAnimation->GetPlayLength();
+					ReloadTimerLength = Weapon->ReloadEmptyGunAnimationMontage->GetPlayLength();
 				}
 			}
 		}
 
-		if (StartTimer == true && TimerLength > 0.0f)
+		if (StartTimer == true && ReloadTimerLength > 0.0f)
 		{
-			GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AMultiplayerCharacter::Reload2, TimerLength, false, TimerLength);
+			GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AMultiplayerCharacter::Reload2, ReloadTimerLength, false, ReloadTimerLength);
 		}
 		else
 		{
@@ -2218,13 +3182,33 @@ void AMultiplayerCharacter::SetArmsAnimationMode1()
 	}
 }
 
+void AMultiplayerCharacter::SetPlayerModelAnimationMode(float Delay)
+{
+	if (Delay > 0.0f)
+	{
+		GetWorldTimerManager().SetTimer(PlayerModelAnimationModeTimerHandle, this, &AMultiplayerCharacter::SetPlayerModelAnimationMode1, Delay, false, Delay);
+	}
+	else
+	{
+		SetPlayerModelAnimationMode1();
+	}
+}
+
+void AMultiplayerCharacter::SetPlayerModelAnimationMode1()
+{
+	if (GetPlayerModelMesh())
+	{
+		GetPlayerModelMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	}
+}
+
 // Called when the game starts or when spawned
 void AMultiplayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
 	RecalculateBaseEyeHeight();
-	GetOwningController();
+	SetOwningController();
 
 	if (HealthComponent)
 	{
@@ -2243,6 +3227,17 @@ void AMultiplayerCharacter::BeginPlay()
 void AMultiplayerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (IsLocallyControlled())
+	{
+		ServerReplicateControlRotation(GetControlRotation());
+		MulticastReplicateControlRotation(GetControlRotation());
+
+		if (CameraComponent)
+		{
+			ReplicateCameraTransform(CameraComponent->GetComponentLocation(), CameraComponent->GetComponentRotation());
+		}
+	}
 }
 
 void AMultiplayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -2251,6 +3246,8 @@ void AMultiplayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 
 	DOREPLIFETIME(AMultiplayerCharacter, PlayerIndex);
 	DOREPLIFETIME(AMultiplayerCharacter, OwningController);
+	DOREPLIFETIME(AMultiplayerCharacter, OwningControllerCast);
+	DOREPLIFETIME(AMultiplayerCharacter, UsingThirdPerson);
 	DOREPLIFETIME(AMultiplayerCharacter, CanInteract);
 	DOREPLIFETIME(AMultiplayerCharacter, CanShoot);
 	DOREPLIFETIME(AMultiplayerCharacter, AllWeapons);
@@ -2262,6 +3259,9 @@ void AMultiplayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(AMultiplayerCharacter, IsZoomedIn);
 	DOREPLIFETIME(AMultiplayerCharacter, AllSharedCaliberNames);
 	DOREPLIFETIME(AMultiplayerCharacter, AllSharedCaliberAmounts);
+	DOREPLIFETIME(AMultiplayerCharacter, ReplicatedControlRotation);
+	DOREPLIFETIME(AMultiplayerCharacter, ReplicatedCameraLocation);
+	DOREPLIFETIME(AMultiplayerCharacter, ReplicatedCameraRotation);
 }
 
 // Called to bind functionality to input
@@ -2277,7 +3277,7 @@ void AMultiplayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInputComponent->BindAction(IA_Interact, ETriggerEvent::Started, this, &AMultiplayerCharacter::Interact);
 		EnhancedInputComponent->BindAction(IA_Jump, ETriggerEvent::Started, this, &AMultiplayerCharacter::PressJump);
 		EnhancedInputComponent->BindAction(IA_Jump, ETriggerEvent::Triggered, this, &AMultiplayerCharacter::HoldJump);
-		EnhancedInputComponent->BindAction(IA_Jump, ETriggerEvent::Completed, this, &AMultiplayerCharacter::StopJumping);
+		EnhancedInputComponent->BindAction(IA_Jump, ETriggerEvent::Completed, this, &AMultiplayerCharacter::ReleaseJump);
 		EnhancedInputComponent->BindAction(IA_Fire, ETriggerEvent::Started, this, &AMultiplayerCharacter::PressFireInput);
 		EnhancedInputComponent->BindAction(IA_Fire, ETriggerEvent::Completed, this, &AMultiplayerCharacter::ReleaseFireInput);
 		EnhancedInputComponent->BindAction(IA_Aim, ETriggerEvent::Started, this, &AMultiplayerCharacter::AimInput);
@@ -2285,5 +3285,8 @@ void AMultiplayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInputComponent->BindAction(IA_Reload, ETriggerEvent::Started, this, &AMultiplayerCharacter::Reload);
 		EnhancedInputComponent->BindAction(IA_SwitchWeapons, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchWeaponsInput);
 		EnhancedInputComponent->BindAction(IA_GamepadSwitchWeapons, ETriggerEvent::Started, this, &AMultiplayerCharacter::NextWeapon);
+		EnhancedInputComponent->BindAction(IA_SwitchPerspective, ETriggerEvent::Started, this, &AMultiplayerCharacter::ToggleThirdPerson);
+		EnhancedInputComponent->BindAction(IA_SwitchToWeapon1, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchToWeapon1);
+		EnhancedInputComponent->BindAction(IA_SwitchToWeapon2, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchToWeapon2);
 	}
 }
