@@ -16,7 +16,7 @@ class MULTIPLAYERFPS_API AMultiplayerPlayerController : public APlayerController
 public:
 	AMultiplayerPlayerController();
 
-	UFUNCTION(BlueprintCallable, meta = (Tooltip = "This is exactly the same as the engine function, the reason it is BlueprintCallable is because you can override this function"), Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, meta = (Tooltip = "This is exactly the same as the engine function, the reason it is BlueprintCallable is because you can override this function"), Category = "Functions")
 	virtual APawn* GetControlledPawn();
 
 	UFUNCTION(BlueprintCallable, Client, Reliable, meta = (Tooltip = "Only pause offline, does not work in multiplayer"), Category = "Functions")
@@ -58,49 +58,61 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetPlayerIndex(int NewPlayerIndex);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetPlayerIndex();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCanSwitchPerspective(bool NewCanSwitchPerspective);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetCanSwitchPerspective();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetUsingThirdPerson(bool NewUsingThirdPerson);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetUsingThirdPerson();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetGiveLoadoutOnBeginPlay(bool NewGiveLoadoutOnBeginPlay);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetGiveLoadoutOnBeginPlay();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetMaxWeaponAmount(int NewMaxWeaponAmount, bool DestroyWeaponsInExcess = false);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetMaxWeaponAmount();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetRandomizeUnselectedWeapons(bool NewRandomizeUnselectedWeapons);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetRandomizeUnselectedWeapons();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetRespawnPoints(TMap<FVector, FRotator> NewRespawnPoints);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<FVector, FRotator> GetRespawnPoints();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetAvoidDuplicatesForRandomWeapons(int NewAvoidDuplicatesForRandomWeapons);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetAvoidDuplicatesForRandomWeapons();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetRespawnDelay(float NewRespawnDelay);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetRespawnDelay();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetAllSharedCalibersOnSpawn(TMap<FName, int32> NewAllSharedCalibersOnSpawn);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<FName, int32> GetAllSharedCalibersOnSpawn();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
@@ -183,13 +195,19 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	int PlayerIndex;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Perspective", meta = (Tooltip = "Set this to true if you want third person to be default"))
+	bool UsingThirdPerson;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "Perspective = first or third person"))
+	bool CanSwitchPerspective;
+
 	UPROPERTY(BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "This will just detect whether the last input was with a keyboard and mouse or a controller"))
 	bool UsingGamepad;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "Only applies to MultiplayerCharacter when possessing pawn"))
 	bool GiveLoadoutOnBeginPlay;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Weapons", meta = (Tooltip = "If you are setting this at runtime use the SetMaxWeaponAmount function instead of directly setting this variable", ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Weapons", meta = (ClampMin = 0))
 	int MaxWeaponAmount;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
@@ -201,14 +219,18 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "This would be the name and amount of each caliber the player spawns with, only applies to guns that use this rather than their own reserve ammo", ClampMin = 0))
 	TMap<FName, int32> AllSharedCalibersOnSpawn;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Variables", meta = (ClampMin = 0.0f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Respawn", meta = (ClampMin = 0.0f))
 	float RespawnDelay;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Respawn")
+	bool ShowHUDOnRespawn;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Respawn", meta = (Tooltip = "If ShowHUDOnRespawn = true this will just remove all widget before showing the HUD"))
+	bool RemoveAllWidgetsOnRespawn;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	TMap<FVector, FRotator> RespawnPoints;
 
 	FTimerHandle GetControlledPawnTimerHandle;
 	FTimerHandle RespawnTimerHandle;
-	FTimerDelegate ShowHUDTimerDelegate;
-	FTimerHandle ShowHUDTimerHandle;
 };
