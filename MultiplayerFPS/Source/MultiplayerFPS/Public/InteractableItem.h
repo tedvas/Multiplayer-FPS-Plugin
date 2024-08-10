@@ -7,6 +7,9 @@
 #include "Components/BoxComponent.h"
 #include "InteractableItem.generated.h"
 
+UDELEGATE()
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInteract, APawn*, InteractingPlayer);
+
 UCLASS()
 class MULTIPLAYERFPS_API AInteractableItem : public AActor
 {
@@ -26,6 +29,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void Interact(APawn* InteractingPlayer);
+
+	UPROPERTY(BlueprintAssignable)
+	FOnInteract OnInteract;
 
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void Interact_BP(APawn* InteractingPlayer);

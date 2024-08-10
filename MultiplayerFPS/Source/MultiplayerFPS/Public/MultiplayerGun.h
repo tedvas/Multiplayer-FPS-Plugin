@@ -9,6 +9,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "TimerManager.h"
 #include "MultiplayerGun.generated.h"
 
@@ -91,6 +92,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void DestroySelf();
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual USceneComponent* GetFireSceneToUse();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual USceneComponent* GetBulletCasingSceneToUse();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetUsingThirdPerson(bool NewUsingThirdPerson);
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void ServerSetUsingThirdPerson(bool NewUsingThirdPerson);
+
+	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastSetUsingThirdPerson(bool NewUsingThirdPerson);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetUsingThirdPerson();
+
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetWasPickedup(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
 
@@ -103,6 +122,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void SetWasPickedup_BP(bool Pickedup, UPrimitiveComponent* ComponentToAttachTo = nullptr);
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetWasPickedup();
+
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetPickupCollisionEnabled();
 
@@ -112,10 +134,16 @@ public:
 	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
 	virtual void MulticastSetPickupCollisionEnabled();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
-	virtual void SetOwningPlayer(APawn* NewOwningPlayer);
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "For ReplicationMethod 0 = Not replicated, 1 = Server only, 2 = Multicast only, 3 = Both server and multicast", ClampMin = 0, ClampMax = 3))
+	virtual void SetOwningPlayer(APawn* NewOwningPlayer, int ReplicationMethod = 0);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(Server, Reliable, Category = "Functions", meta = (ClampMin = 0, ClampMax = 3))
+	virtual void ServerSetOwningPlayer(APawn* NewOwningPlayer, int ReplicationMethod = 0);
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastSetOwningPlayer(APawn* NewOwningPlayer);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	APawn* GetOwningPlayer();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
@@ -199,10 +227,16 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void DestroySmokeEffect_BP();
 
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "Do not call this function, this is used in the character SetUsingThirdPerson funtion"))
+	virtual void ApplyPerspective(bool ThirdPerson);
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void ApplyPerspective_BP(bool ThirdPerson);
+
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetCanShoot(bool NewCanShoot);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetCanShoot();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
@@ -211,124 +245,124 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetSocketName(FName NewSocketName);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FName GetSocketName();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FVector GetPlayerArmsRelativeLocation();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FRotator GetPlayerArmsRelativeRotation();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetFireMode();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetUseADS(int NewUseADS);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetUseADS();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDivideAimingFOV(bool NewDivideAimingFOV);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetDivideAimingFOV();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetADSFOV(float NewADSFOV);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetADSFOV();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetZoomFOV(float NewZoomFOV);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetZoomFOV();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetTimeToADS(float NewTimeToADS);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetTimeToADS();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetTimeToZoom(float NewTimeToZoom);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetTimeToZoom();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetADSArmsLocation(FVector NewADSArmsLocation);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FVector GetADSArmsLocation();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetADSArmsRotation(FRotator NewADSArmsRotation);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FRotator GetADSArmsRotation();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetZoomArmsLocation(FVector NewZoomArmsLocation);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FVector GetZoomArmsLocation();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetZoomArmsRotation(FRotator NewZoomArmsRotation);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual FRotator GetZoomArmsRotation();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetAmmoInMagazine(int NewAmmoInMagazine);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetAmmoInMagazine();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetMaxAmmoInMagazine();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetReserveAmmo();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetMaxReserveAmmo();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetUseSharedCalibers(bool NewUseSharedCalibers);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetUseSharedCalibers();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetCaliberToUse(int32 NewCaliberToUse);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int32 GetCaliberToUse();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetDoesOverheat();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetCurrentHeat();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetMaxHeat();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetInfiniteAmmo(int NewInfiniteAmmo);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetInfiniteAmmo();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetUseProjectile();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetSharedCaliberAmount();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
@@ -349,31 +383,31 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetIsExplosive(bool NewIsExplosive);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetIsExplosive();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetUseActorClassesForHitMarkers(int NewUseActorClassesForHitMarkers);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetUseActorClassesForHitMarkers();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitMarkerActorSounds(TMap<TSubclassOf<AActor>, USoundBase*> NewHitMarkerActorSounds);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<TSubclassOf<AActor>, USoundBase*> GetHitMarkerActorSounds();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetHitMarkerSurfaceSounds(TMap<UPhysicalMaterial*, USoundBase*> NewHitMarkerSurfaceSounds);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual TMap<UPhysicalMaterial*, USoundBase*> GetHitMarkerSurfaceSounds();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetReloadGunSound(USoundBase* NewReloadGunSound);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual USoundBase* GetReloadGunSound();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Name")
@@ -382,17 +416,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "Only set this variable if you are placing the gun in the level, do not set this at runtime"))
 	bool WasPickedupBeginPlay;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to refill the magazine, 0 = instant", ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to refill the magazine, 0 = instant, -1 = time for player animation to finish, -2 = time for gun animation to finish, if you have animation montages assigned time will be based on the animation montage", ClampMin = -2))
 	float ReloadSpeed;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to finish reloading after the magazine was refilled, 0 = instant, -1 = time for arms animation to finish, -2 = time for gun animation to finish, -3 = time for third person animation to finish", ClampMin = -3))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to finish reloading after the magazine was refilled, 0 = instant, -1 = time for player animation to finish, -2 = time for gun animation to finish, if you have animation montages assigned time will be based on the animation montage", ClampMin = -2))
 	float ReloadSpeed1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "If set to 0 it will just use the animation length, if this is not 0 it will use this to determine how long it takes to switch off of and onto this weapon", ClampMin = 0.0f))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "If set to 0 it will just use the animation length, if this is not 0 it will use this to determine how long it takes to switch off of and onto this weapon, if you have animation montages assigned time will be based on the animation montage", ClampMin = 0.0f))
 	float WeaponSwitchTime;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
 	UAnimationAsset* WeaponSwitchAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimMontage* WeaponSwitchAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimationAsset* ThirdPersonWeaponSwitchAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimMontage* ThirdPersonWeaponSwitchAnimationMontage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
 	bool UseTwoWeaponSwitchAnimations;
@@ -400,23 +443,50 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
 	UAnimationAsset* WeaponSwitchAnimation1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimMontage* WeaponSwitchAnimation1Montage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimationAsset* ThirdPersonWeaponSwitchAnimation1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimMontage* ThirdPersonWeaponSwitchAnimation1Montage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Played when switching to this gun, only applies if you are using a skeletal mesh for your gun"))
 	UAnimationAsset* SwitchToGunAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Played when switching to this gun, only applies if you are using a skeletal mesh for your gun"))
+	UAnimMontage* SwitchToGunAnimationMontage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Played when switching to another gun, only applies if you are using a skeletal mesh for your gun"))
 	UAnimationAsset* SwitchOffGunAnimation;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Played when switching to another gun, only applies if you are using a skeletal mesh for your gun"))
+	UAnimMontage* SwitchOffGunAnimationMontage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
 	UAnimationAsset* ReloadAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimMontage* ReloadAnimationMontage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied"))
 	UAnimationAsset* ReloadEmptyAnimation;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied"))
+	UAnimMontage* ReloadEmptyAnimationMontage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component"))
 	UAnimationAsset* ThirdPersonReloadAnimation;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component"))
+	UAnimMontage* ThirdPersonReloadAnimationMontage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component when the gun is emptied"))
 	UAnimationAsset* ThirdPersonReloadEmptyAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component when the gun is emptied"))
+	UAnimMontage* ThirdPersonReloadEmptyAnimationMontage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
 	bool UseTwoReloadAnimations;
@@ -424,20 +494,41 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms if UseTwoReloadAnimations = true"))
 	UAnimationAsset* ReloadAnimation1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms if UseTwoReloadAnimations = true"))
+	UAnimMontage* ReloadAnimation1Montage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied if UseTwoReloadAnimations = true"))
 	UAnimationAsset* ReloadEmptyAnimation1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied if UseTwoReloadAnimations = true"))
+	UAnimMontage* ReloadEmptyAnimation1Montage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool UseTwoThirdPersonReloadAnimations;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component if UseTwoReloadAnimations = true"))
 	UAnimationAsset* ThirdPersonReloadAnimation1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component if UseTwoReloadAnimations = true"))
+	UAnimMontage* ThirdPersonReloadAnimation1Montage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component when the gun is emptied if UseTwoReloadAnimations = true"))
 	UAnimationAsset* ThirdPersonReloadEmptyAnimation1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component when the gun is emptied if UseTwoReloadAnimations = true"))
+	UAnimMontage* ThirdPersonReloadEmptyAnimation1Montage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Only applies if you are using a skeletal mesh for your gun"))
 	UAnimationAsset* ReloadGunAnimation;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Only applies if you are using a skeletal mesh for your gun"))
+	UAnimMontage* ReloadGunAnimationMontage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Plays when the gun is emptied, only applies if you are using a skeletal mesh for your gun"))
 	UAnimationAsset* ReloadEmptyGunAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Plays when the gun is emptied, only applies if you are using a skeletal mesh for your gun"))
+	UAnimMontage* ReloadEmptyGunAnimationMontage;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Ammo")
 	TArray<AMultiplayerBulletCasing*> SpawnedBulletCasings;
@@ -446,11 +537,17 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This is where the muzzle flash will be and if you have fire location and or rotation based on the barrel it will be based on this component"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This is where the muzzle flash will be"))
 	USceneComponent* FireSceneComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This is where the muzzle flash will be for other players"))
+	USceneComponent* ThirdPersonFireSceneComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USceneComponent* BulletCasingSceneComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	USceneComponent* ThirdPersonBulletCasingSceneComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This only matters if UseBoxCollisionForDamage = true, rescale this instead of the box collision"))
 	USceneComponent* FireBoxScene;
@@ -485,6 +582,12 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
 	TArray<FVector> ShotgunPelletHitLocations;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = no, 1 = fire location is at FireSceneComponent, 2 = fire rotation is based on FireSceneComponent, 3 = fire location and rotation is at FireSceneComponent", ClampMin = 0, ClampMax = 3))
+	int FireFromBarrel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "X axis is to the left and right, Y is forward and backword, and Z is up and down"))
+	FVector BulletSpawnLocationOffset;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Overrides aiming spread variables"))
 	bool UseAimingSpreadMultiplier;
@@ -679,6 +782,9 @@ protected:
 	void PrintDistanceTraved_BP(float Distance);
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
+	bool UsingThirdPerson;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	bool WasPickedup;
 	
 	UPROPERTY()
@@ -693,11 +799,20 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "If SnapToSocket = 0 then it will just attach to a socket if you set this variable"))
 	FName SocketName;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "If SnapToSocket = 0 then it will just attach to a socket if you set this variable"))
+	FName ThirdPersonSocketName;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "Only applies if SnapToSocket = 0 and is relative to its parent component (usually the player character's hands)"))
 	FVector GunRelativeLocation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "Only applies if SnapToSocket = 0 and is relative to its parent component (usually the player character's hands)"))
 	FRotator GunRelativeRotation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "Only applies if SnapToSocket = 0 and is relative to its parent component (usually the player character's hands), usually you can set this to the same as for first person"))
+	FVector ThirdPersonGunRelativeLocation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "Only applies if SnapToSocket = 0 and is relative to its parent component (usually the player character's hands), usually you can set this to the same as for first person"))
+	FRotator ThirdPersonGunRelativeRotation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location")
 	FVector PlayerArmsRelativeLocation;
@@ -716,6 +831,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
 	UParticleSystem* MuzzleFlash;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If this is false other players will see the muzzle flash at the ThirdPersonFireSceneComponent, if this is true other players will see the muzzle flash in the same location as the player firing"))
+	bool ReplicateMuzzleFlashLocation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	bool UseFirstPersonRotationForThirdPersonMuzzleFlash;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Firing")
 	UParticleSystemComponent* SpawnedContinuousMuzzleFlash;
