@@ -1,5 +1,4 @@
 // Fill out your copyright notice in the Description page of Project Settings.
-// the reason you'll see weird parenthesis on if statements is for linux compatibility
 
 #include "MultiplayerPlayerController.h"
 #include "Net/UnrealNetwork.h"
