@@ -674,7 +674,39 @@ void AMultiplayerGun::Fire()
 
 	if (IsShotgun == false && SwitchedFireToServer == false)
 	{
-		if ((FireMode == 2 && AmountOfBurstShotsFired >= AmountOfShotsForBurst) || (FireMode == 2 && AmmoInMagazine <= 0 && InfiniteAmmo != 2))
+		int TempBurstShots = AmountOfBurstShotsFired;
+
+		if (!HasAuthority())
+		{
+			TempBurstShots++;
+			
+			ClientFire();
+
+			if (IsShotgun == false && TempBurstShots >= AmountOfShotsForBurst)
+			{
+				if (FireMode != 3)
+				{
+					if (GetFireSceneToUse())
+					{
+						if (FireSound)
+						{
+							UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation());
+						}
+
+						if (MuzzleFlash)
+						{
+							UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+						}
+					}
+					else
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "FireSceneToUse Invalid MultiplayerGun.cpp:Fire");
+					}
+				}
+			}
+		}
+		
+		if ((FireMode == 2 && TempBurstShots >= AmountOfShotsForBurst) || (FireMode == 2 && AmmoInMagazine <= 0 && InfiniteAmmo != 2))
 		{
 			GetWorldTimerManager().ClearTimer(BurstFireTimerHandle);
 			AmountOfBurstShotsFired = 0;

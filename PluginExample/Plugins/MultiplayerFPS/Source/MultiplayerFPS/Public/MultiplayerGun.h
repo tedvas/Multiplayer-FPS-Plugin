@@ -422,6 +422,85 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to finish reloading after the magazine was refilled, 0 = instant, -1 = time for player animation to finish, -2 = time for gun animation to finish, if you have animation montages assigned time will be based on the animation montage", ClampMin = -2))
 	float ReloadSpeed1;
 
+protected:
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = Semi-Auto, 1 = Full-Auto, 2 = Burst, 3 = Continuous, continuous fire would be for something like a flamethrower that is constantly firing so for example sound isn't played when damage is applied it's looped until you stop firing if this is true it is recommended to set UseProjectile to false and BulletCasingToSpawn to none", ClampMin = 0, ClampMax = 3))
+	int FireMode;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This would be useful for something like a flamethrower that has an area of effect rather than having the player hit only what is in the center of the screen, does not apply if UseProjectile = true"))
+	bool UseBoxCollisionForDamage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Does not work with projectiles"))
+	bool IsShotgun;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (ClampMin = 1))
+	int ShotgunAmountOfPellets;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	int ShotgunAmountOfPelletsShot;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	TArray<FVector> ShotgunPelletHitLocations;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = no, 1 = fire location is at FireSceneComponent, 2 = fire rotation is based on FireSceneComponent, 3 = fire location and rotation is at FireSceneComponent", ClampMin = 0, ClampMax = 3))
+	int FireFromBarrel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "X axis is to the left and right, Y is forward and backword, and Z is up and down"))
+	FVector BulletSpawnLocationOffset;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Overrides aiming spread variables"))
+	bool UseAimingSpreadMultiplier;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float SpreadAimingMultiplier;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MinHipFireVerticalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MaxHipFireVerticalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MinHipFireHorizontalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MaxHipFireHorizontalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MinAimingFireVerticalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MaxAimingFireVerticalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MinAimingFireHorizontalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	float MaxAimingFireHorizontalSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Spread is pre determined so it can replicate properly"))
+	bool AutomaticallyAddPreDeterminedSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables, only set the X and Y axes Z or 'yaw' does nothing"))
+	TArray<FRotator> PreDeterminedSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables, only set the X and Y axes Z or 'yaw' does nothing"))
+	TArray<FRotator> PreDeterminedAimingSpread;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables, only set the X and Y axes Z or 'yaw' does nothing"))
+	TArray<FRotator> PreDeterminedAimingSpreadWithMultiplier;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	int32 PreDeterminedSpreadIndex;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	int32 PreDeterminedAimingSpreadIndex;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
+	int32 PreDeterminedAimingSpreadWithMultiplierIndex;
+
+public:
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "If set to 0 it will just use the animation length, if this is not 0 it will use this to determine how long it takes to switch off of and onto this weapon, if you have animation montages assigned time will be based on the animation montage", ClampMin = 0.0f))
 	float WeaponSwitchTime;
 
@@ -564,81 +643,6 @@ protected:
 	// This is only used to control fire rate, to control if the player can fire set can shoot in the player character class
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	bool CanShoot;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = Semi-Auto, 1 = Full-Auto, 2 = Burst, 3 = Continuous, continuous fire would be for something like a flamethrower that is constantly firing so for example sound isn't played when damage is applied it's looped until you stop firing if this is true it is recommended to set UseProjectile to false and BulletCasingToSpawn to none", ClampMin = 0, ClampMax = 3))
-	int FireMode;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This would be useful for something like a flamethrower that has an area of effect rather than having the player hit only what is in the center of the screen, does not apply if UseProjectile = true"))
-	bool UseBoxCollisionForDamage;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Does not work with projectiles"))
-	bool IsShotgun;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (ClampMin = 1))
-	int ShotgunAmountOfPellets;
-
-	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
-	int ShotgunAmountOfPelletsShot;
-
-	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
-	TArray<FVector> ShotgunPelletHitLocations;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = no, 1 = fire location is at FireSceneComponent, 2 = fire rotation is based on FireSceneComponent, 3 = fire location and rotation is at FireSceneComponent", ClampMin = 0, ClampMax = 3))
-	int FireFromBarrel;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "X axis is to the left and right, Y is forward and backword, and Z is up and down"))
-	FVector BulletSpawnLocationOffset;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Overrides aiming spread variables"))
-	bool UseAimingSpreadMultiplier;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float SpreadAimingMultiplier;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float MinHipFireVerticalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float MaxHipFireVerticalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float MinHipFireHorizontalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float MaxHipFireHorizontalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float MinAimingFireVerticalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float MaxAimingFireVerticalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float MinAimingFireHorizontalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
-	float MaxAimingFireHorizontalSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "Spread is pre determined so it can replicate properly"))
-	bool AutomaticallyAddPreDeterminedSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables"))
-	TArray<FRotator> PreDeterminedSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables"))
-	TArray<FRotator> PreDeterminedAimingSpread;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If AutomaticallyAddPreDeterminedSpread = true 15 values will automatically be added, if you want to add your own you can manually do it here, setting this manually will override the min and max spread variables"))
-	TArray<FRotator> PreDeterminedAimingSpreadWithMultiplier;
-
-	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
-	int32 PreDeterminedSpreadIndex;
-
-	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
-	int32 PreDeterminedAimingSpreadIndex;
-
-	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
-	int32 PreDeterminedAimingSpreadWithMultiplierIndex;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Ammo", meta = (ClampMin = 0))
 	int AmmoInMagazine;
