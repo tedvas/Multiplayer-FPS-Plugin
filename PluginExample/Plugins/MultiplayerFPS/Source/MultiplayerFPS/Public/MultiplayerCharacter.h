@@ -571,10 +571,10 @@ public:
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
 	int PlayerIndex;
 
-protected:
-
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
 	APlayerController* OwningController;
+
+protected:
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Player Info")
 	AMultiplayerPlayerController* OwningControllerCast;
