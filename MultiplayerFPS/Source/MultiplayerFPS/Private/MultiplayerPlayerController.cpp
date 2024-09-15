@@ -243,6 +243,11 @@ void AMultiplayerPlayerController::PossessPawn(TSubclassOf<APawn> NewPawnToSpawn
 		}
 		else
 		{
+			if (AMultiplayerCharacter* CurrentCharacterCast = Cast<AMultiplayerCharacter>(GetControlledPawn()))
+			{
+				CurrentCharacterCast->OwningController = nullptr;
+			}
+			
 			UnPossess();
 		}
 
