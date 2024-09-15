@@ -265,9 +265,17 @@ void AMultiplayerGun::CheckForOwner()
 
 AMultiplayerCharacter* AMultiplayerGun::GetOwningPlayerCast()
 {
-	if (!OwningPlayerCast && OwningPlayer)
+	if (WasPickedup == false)
 	{
-		OwningPlayerCast = Cast<AMultiplayerCharacter>(OwningPlayer);
+		SetOwner(nullptr);
+		OwningPlayer = nullptr;
+		OwningPlayerCast = nullptr;
+		return nullptr;
+	}
+	
+	if (!OwningPlayerCast && GetOwningPlayer())
+	{
+		OwningPlayerCast = Cast<AMultiplayerCharacter>(GetOwningPlayer());
 	}
 
 	return OwningPlayerCast;
@@ -291,9 +299,9 @@ USceneComponent* AMultiplayerGun::GetFireSceneToUse()
 		FireSceneToUse = FireSceneComponent;
 	}
 
-	if (OwningPlayer)
+	if (GetOwningPlayer())
 	{
-		if (OwningPlayer->IsLocallyControlled() || ReplicateMuzzleFlashLocation == true)
+		if (GetOwningPlayer()->IsLocallyControlled() || ReplicateMuzzleFlashLocation == true)
 		{
 			return FireSceneToUse;
 		}
@@ -321,9 +329,9 @@ USceneComponent* AMultiplayerGun::GetBulletCasingSceneToUse()
 		BulletCasingSceneToUse = BulletCasingSceneComponent;
 	}
 
-	if (OwningPlayer)
+	if (GetOwningPlayer())
 	{
-		if (OwningPlayer->IsLocallyControlled())
+		if (GetOwningPlayer()->IsLocallyControlled())
 		{
 			return BulletCasingSceneToUse;
 		}
@@ -489,6 +497,7 @@ void AMultiplayerGun::MulticastSetWasPickedup_Implementation(bool Pickedup, UPri
 	else
 	{
 		StopFiring();
+		SetOwningPlayer(nullptr, 4);
 
 		if (ThirdPersonGunMeshComponent)
 		{
@@ -560,8 +569,20 @@ void AMultiplayerGun::SetOwningPlayer(APawn* NewOwningPlayer, int ReplicationMet
 	{
 		MulticastSetOwningPlayer(NewOwningPlayer);
 	}
+	else if (ReplicationMethod == 4)
+	{
+		if (HasAuthority())
+		{
+			ServerSetOwningPlayer(NewOwningPlayer, ReplicationMethod);
+		}
+		else
+		{
+			MulticastSetOwningPlayer(NewOwningPlayer);
+		}
+	}
 	else
 	{
+		SetOwner(NewOwningPlayer);
 		OwningPlayer = NewOwningPlayer;
 		OwningPlayerCast = nullptr;
 	}
@@ -569,12 +590,13 @@ void AMultiplayerGun::SetOwningPlayer(APawn* NewOwningPlayer, int ReplicationMet
 
 void AMultiplayerGun::ServerSetOwningPlayer_Implementation(APawn* NewOwningPlayer, int ReplicationMethod)
 {
-	if (ReplicationMethod == 3)
+	if (ReplicationMethod >= 3)
 	{
 		MulticastSetOwningPlayer(NewOwningPlayer);
 	}
 	else
 	{
+		SetOwner(NewOwningPlayer);
 		OwningPlayer = NewOwningPlayer;
 		OwningPlayerCast = nullptr;
 	}
@@ -582,12 +604,18 @@ void AMultiplayerGun::ServerSetOwningPlayer_Implementation(APawn* NewOwningPlaye
 
 void AMultiplayerGun::MulticastSetOwningPlayer_Implementation(APawn* NewOwningPlayer)
 {
+	SetOwner(NewOwningPlayer);
 	OwningPlayer = NewOwningPlayer;
 	OwningPlayerCast = nullptr;
 }
 
 APawn* AMultiplayerGun::GetOwningPlayer()
 {
+	if (!OwningPlayer && GetOwner())
+	{
+		OwningPlayer = Cast<APawn>(GetOwner());
+	}
+
 	return OwningPlayer;
 }
 
@@ -595,7 +623,7 @@ void AMultiplayerGun::FireInput()
 {
 	if (AmmoInMagazine > 0 || InfiniteAmmo == 2)
 	{
-		if (CanShoot == true && OwningPlayer && WasPickedup == true && CurrentHeat < MaxHeat)
+		if (CanShoot == true && GetOwningPlayer() && WasPickedup == true && CurrentHeat < MaxHeat)
 		{
 			if ((ProhibitFiringWhileCoolingDown == 1 && CurrentHeat > 0 && ReachedMaxHeat == true) || (ProhibitFiringWhileCoolingDown == 2 && CurrentHeat > 0))
 			{
@@ -667,60 +695,60 @@ void AMultiplayerGun::FireInput()
 
 void AMultiplayerGun::Fire()
 {
-	if (!HasAuthority())
+	if (WasPickedup == true && GetOwningPlayer())
 	{
-		ServerFire();
-	}
-
-	if (IsShotgun == false && SwitchedFireToServer == false)
-	{
-		int TempBurstShots = AmountOfBurstShotsFired;
-
 		if (!HasAuthority())
 		{
-			TempBurstShots++;
-			
-			ClientFire();
+			ServerFire();
+		}
 
-			if (IsShotgun == false && TempBurstShots >= AmountOfShotsForBurst)
+		if (IsShotgun == false && SwitchedFireToServer == false)
+		{
+			int TempBurstShots = AmountOfBurstShotsFired;
+
+			if (!HasAuthority())
 			{
-				if (FireMode != 3)
-				{
-					if (GetFireSceneToUse())
-					{
-						if (FireSound)
-						{
-							UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation());
-						}
+				TempBurstShots++;
+			
+				ClientFire();
 
-						if (MuzzleFlash)
-						{
-							UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
-						}
-					}
-					else
+				if (IsShotgun == false && TempBurstShots >= AmountOfShotsForBurst)
+				{
+					if (FireMode != 3)
 					{
-						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "FireSceneToUse Invalid MultiplayerGun.cpp:Fire");
+						if (GetFireSceneToUse())
+						{
+							if (FireSound)
+							{
+								UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation());
+							}
+
+							if (MuzzleFlash)
+							{
+								UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+							}
+						}
+						else
+						{
+							GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "FireSceneToUse Invalid MultiplayerGun.cpp:Fire");
+						}
 					}
 				}
 			}
-		}
 		
-		if ((FireMode == 2 && TempBurstShots >= AmountOfShotsForBurst) || (FireMode == 2 && AmmoInMagazine <= 0 && InfiniteAmmo != 2))
-		{
-			GetWorldTimerManager().ClearTimer(BurstFireTimerHandle);
-			AmountOfBurstShotsFired = 0;
-			return;
+			if ((FireMode == 2 && TempBurstShots >= AmountOfShotsForBurst) || (FireMode == 2 && AmmoInMagazine <= 0 && InfiniteAmmo != 2))
+			{
+				GetWorldTimerManager().ClearTimer(BurstFireTimerHandle);
+				AmountOfBurstShotsFired = 0;
+				return;
+			}
+			else if (FireMode == 2)
+			{
+				AmountOfBurstShotsFired++;
+			}
 		}
-		else if (FireMode == 2)
-		{
-			AmountOfBurstShotsFired++;
-		}
-	}
 
-	if ((AmmoInMagazine > 0 && CurrentHeat < MaxHeat) || (IsShotgun == true && ShotgunAmountOfPelletsShot > 0) || InfiniteAmmo == 2)
-	{
-		if (OwningPlayer && WasPickedup == true)
+		if ((AmmoInMagazine > 0 && CurrentHeat < MaxHeat) || (IsShotgun == true && ShotgunAmountOfPelletsShot > 0) || InfiniteAmmo == 2)
 		{
 			if (CanShoot == true || FireMode == 1 || FireMode == 2 || IsShotgun == true)
 			{
@@ -751,7 +779,7 @@ void AMultiplayerGun::Fire()
 					}
 					else
 					{
-						OwningPlayer->GetActorEyesViewPoint(TempVector, FireRotation);
+						GetOwningPlayer()->GetActorEyesViewPoint(TempVector, FireRotation);
 
 						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid MultiplayerGun.cpp:Fire 1");
 					}
@@ -766,7 +794,7 @@ void AMultiplayerGun::Fire()
 					}
 					else
 					{
-						OwningPlayer->GetActorEyesViewPoint(FireLocation, TempRotator);
+						GetOwningPlayer()->GetActorEyesViewPoint(FireLocation, TempRotator);
 
 						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid MultiplayerGun.cpp:Fire 2");
 					}
@@ -784,7 +812,7 @@ void AMultiplayerGun::Fire()
 					}
 					else
 					{
-						OwningPlayer->GetActorEyesViewPoint(FireLocation, FireRotation);
+						GetOwningPlayer()->GetActorEyesViewPoint(FireLocation, FireRotation);
 
 						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid MultiplayerGun.cpp:Fire 3");
 					}
@@ -792,9 +820,9 @@ void AMultiplayerGun::Fire()
 					break;
 				}
 
-				FireLocation += OwningPlayer->GetActorRightVector() * BulletSpawnLocationOffset.X;
-				FireLocation += OwningPlayer->GetActorForwardVector() * BulletSpawnLocationOffset.Y;
-				FireLocation += OwningPlayer->GetActorUpVector() * BulletSpawnLocationOffset.Z;
+				FireLocation += GetOwningPlayer()->GetActorRightVector() * BulletSpawnLocationOffset.X;
+				FireLocation += GetOwningPlayer()->GetActorForwardVector() * BulletSpawnLocationOffset.Y;
+				FireLocation += GetOwningPlayer()->GetActorUpVector() * BulletSpawnLocationOffset.Z;
 
 				FVector TraceDirection;
 
@@ -858,7 +886,7 @@ void AMultiplayerGun::Fire()
 
 					FCollisionQueryParams QueryParams;
 					QueryParams.AddIgnoredActor(this);
-					QueryParams.AddIgnoredActor(OwningPlayer);
+					QueryParams.AddIgnoredActor(GetOwningPlayer());
 					QueryParams.bTraceComplex = true;
 					QueryParams.bReturnPhysicalMaterial = true;
 
@@ -1002,7 +1030,7 @@ void AMultiplayerGun::Fire()
 
 							if (ExplosionIgnoreOwner == true)
 							{
-								IgnoredActors.Add(OwningPlayer);
+								IgnoredActors.Add(GetOwningPlayer());
 							}
 
 							for (auto& Actor : ExplosionIgnoredActors)
@@ -1244,11 +1272,11 @@ void AMultiplayerGun::Fire()
 						{
 							if (BulletHitModeDelay <= 0.0f)
 							{
-								ExecuteHitFunction(OwningPlayer, HitActor);
+								ExecuteHitFunction(GetOwningPlayer(), HitActor);
 							}
 							else
 							{
-								BulletHitModeTimerDelegate.BindUFunction(this, "ExecuteHitFunction", OwningPlayer, HitActor);
+								BulletHitModeTimerDelegate.BindUFunction(this, "ExecuteHitFunction", GetOwningPlayer(), HitActor);
 								GetWorldTimerManager().SetTimer(BulletHitModeTimerHandle, BulletHitModeTimerDelegate, BulletHitModeDelay, false, BulletHitModeDelay);
 							}
 						}
@@ -1264,7 +1292,7 @@ void AMultiplayerGun::Fire()
 							{
 								FCollisionQueryParams QueryParams1;
 								QueryParams1.AddIgnoredActor(this);
-								QueryParams1.AddIgnoredActor(OwningPlayer);
+								QueryParams1.AddIgnoredActor(GetOwningPlayer());
 								QueryParams1.AddIgnoredActor(Actor);
 
 								if (GetOwningPlayerCast())
@@ -1276,13 +1304,13 @@ void AMultiplayerGun::Fire()
 								}
 
 								FHitResult HitResult;
-								if (Actor != OwningPlayer && BulletHitMode != 2)
+								if (Actor != GetOwningPlayer() && BulletHitMode != 2)
 								{
 									GetWorld()->LineTraceSingleByChannel(HitResult, GetActorLocation(), Actor->GetActorLocation(), ECC_Visibility, QueryParams1);
 
 									if (HitResult.bBlockingHit == false || OverlappingActors.Contains(HitResult.GetActor()))
 									{
-										UGameplayStatics::ApplyDamage(Actor, DefaultDamage, OwningPlayer->GetInstigatorController(), OwningPlayer, DamageType);
+										UGameplayStatics::ApplyDamage(Actor, DefaultDamage, GetOwningPlayer()->GetInstigatorController(), GetOwningPlayer(), DamageType);
 
 										if (HasAuthority())
 										{
@@ -1310,11 +1338,11 @@ void AMultiplayerGun::Fire()
 								{
 									if (BulletHitModeDelay <= 0.0f)
 									{
-										ExecuteHitFunction(OwningPlayer, Actor);
+										ExecuteHitFunction(GetOwningPlayer(), Actor);
 									}
 									else
 									{
-										BulletHitModeTimerDelegate.BindUFunction(this, "ExecuteHitFunction", OwningPlayer, Actor);
+										BulletHitModeTimerDelegate.BindUFunction(this, "ExecuteHitFunction", GetOwningPlayer(), Actor);
 										GetWorldTimerManager().SetTimer(BulletHitModeTimerHandle, BulletHitModeTimerDelegate, BulletHitModeDelay, false, BulletHitModeDelay);
 									}
 								}
@@ -1322,14 +1350,14 @@ void AMultiplayerGun::Fire()
 						}
 					}
 
-					/* ************* Debug ************* */
+					// ************* Debug *************
 
 					if (ShowBulletPath == true)
 					{
 						DrawDebugLine(GetWorld(), FireLocation, TraceEnd, BulletPathColor, BulletPathPersists, BulletPathDuration);
 					}
 
-					/* ************* Debug ************* */
+					// ************* Debug *************
 				}
 				else if (SwitchedFireToServer == false)
 				{
@@ -1388,7 +1416,7 @@ void AMultiplayerGun::Fire()
 					}
 				}
 
-				if ((IsShotgun == false && DoesOverheat == false) || (InfiniteAmmo != 2 && IsShotgun == false))
+				if (DoesOverheat == false && InfiniteAmmo != 2)
 				{
 					if (GetOwningPlayerCast())
 					{
@@ -1399,17 +1427,14 @@ void AMultiplayerGun::Fire()
 					}
 				}
 
-				if (IsShotgun == false)
-				{
-					FireTimerDelegate.BindUFunction(this, FName("SetCanShoot"), true);
-					GetWorldTimerManager().SetTimer(FireTimerHandle, FireTimerDelegate, FireRate, false, FireRate);
-				}
+				FireTimerDelegate.BindUFunction(this, FName("SetCanShoot"), true);
+				GetWorldTimerManager().SetTimer(FireTimerHandle, FireTimerDelegate, FireRate, false, FireRate);
 			}
 		}
-	}
-	else if (CurrentHeat >= MaxHeat)
-	{
-		StopFiring();
+		else if (CurrentHeat >= MaxHeat)
+		{
+			StopFiring();
+		}
 	}
 }
 
@@ -1449,9 +1474,9 @@ void AMultiplayerGun::ClientFire_Implementation()
 		}
 	}
 
-	if (FireCameraShake && OwningPlayer)
+	if (FireCameraShake && GetOwningPlayer())
 	{
-		if (APlayerController* OwningController = Cast<APlayerController>(OwningPlayer->GetController()))
+		if (APlayerController* OwningController = Cast<APlayerController>(GetOwningPlayer()->GetController()))
 		{
 			OwningController->ClientStartCameraShake(FireCameraShake);
 
@@ -1641,7 +1666,7 @@ void AMultiplayerGun::ShotgunFire()
 
 		BulletsShotForSmokeEffect++;
 
-		if (OwningPlayer && AmmoInMagazine <= 0 && InfiniteAmmo != 2)
+		if (GetOwningPlayer() && AmmoInMagazine <= 0 && InfiniteAmmo != 2)
 		{
 			if (GetOwningPlayerCast())
 			{
@@ -1694,9 +1719,9 @@ void AMultiplayerGun::ContinuousFire()
 			Overheat_BP();
 		}
 
-		if (FireControllerVibration && OwningPlayer)
+		if (FireControllerVibration && GetOwningPlayer())
 		{
-			if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(OwningPlayer->GetController()))
+			if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(GetOwningPlayer()->GetController()))
 			{
 				ControllerCast->VibrateController(FireControllerVibration, FireControllerVibrationTag, true);
 			}
@@ -1718,90 +1743,93 @@ void AMultiplayerGun::ServerContinuousFire_Implementation()
 
 void AMultiplayerGun::OnRep_GunHitEffects()
 {
-	if (GunHitEffectsReplication.HitEffect)
+	if (WasPickedup == true && GetOwningPlayer())
 	{
-		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), GunHitEffectsReplication.HitEffect, GunHitEffectsReplication.HitLocation, GunHitEffectsReplication.HitRotation, HitEffectScale);
-	}
-
-	if (FireSound && FireMode != 3)
-	{
-		UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GunHitEffectsReplication.FireLocation);
-	}
-
-	if (BulletHitControllerVibration)
-	{
-		UGameplayStatics::SpawnForceFeedbackAtLocation(GetWorld(), BulletHitControllerVibration, GunHitEffectsReplication.HitLocation, FRotator::ZeroRotator, false, 1.0f, 0.0f, BulletHitControllerVibrationAttenuation);
-	}
-
-	if (MuzzleFlash && GetFireSceneToUse())
-	{
-		UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
-	}
-
-	USoundBase* ChosenHitSound;
-
-	int HitSoundIndex;
-	TArray<USoundBase*> HitSounds;
-	TArray<UPhysicalMaterial*> HitPhysicalMaterials;
-
-	BulletHitSounds.GenerateKeyArray(HitSounds);
-	BulletHitSounds.GenerateValueArray(HitPhysicalMaterials);
-
-	UPhysicalMaterial* HitPhysicalMaterial = GunHitEffectsReplication.HitResult.PhysMaterial.Get();
-
-	if (HitPhysicalMaterials.Contains(HitPhysicalMaterial))
-	{
-		HitSoundIndex = HitPhysicalMaterials.Find(HitPhysicalMaterial);
-
-		if (HitSounds.IsValidIndex(HitSoundIndex))
+		if (GunHitEffectsReplication.HitEffect)
 		{
-			ChosenHitSound = HitSounds[HitSoundIndex];
+			UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), GunHitEffectsReplication.HitEffect, GunHitEffectsReplication.HitLocation, GunHitEffectsReplication.HitRotation, HitEffectScale);
+		}
+
+		if (FireSound && FireMode != 3)
+		{
+			UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GunHitEffectsReplication.FireLocation);
+		}
+
+		if (BulletHitControllerVibration)
+		{
+			UGameplayStatics::SpawnForceFeedbackAtLocation(GetWorld(), BulletHitControllerVibration, GunHitEffectsReplication.HitLocation, FRotator::ZeroRotator, false, 1.0f, 0.0f, BulletHitControllerVibrationAttenuation);
+		}
+
+		if (MuzzleFlash && GetFireSceneToUse())
+		{
+			UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+		}
+
+		USoundBase* ChosenHitSound;
+
+		int HitSoundIndex;
+		TArray<USoundBase*> HitSounds;
+		TArray<UPhysicalMaterial*> HitPhysicalMaterials;
+
+		BulletHitSounds.GenerateKeyArray(HitSounds);
+		BulletHitSounds.GenerateValueArray(HitPhysicalMaterials);
+
+		UPhysicalMaterial* HitPhysicalMaterial = GunHitEffectsReplication.HitResult.PhysMaterial.Get();
+
+		if (HitPhysicalMaterials.Contains(HitPhysicalMaterial))
+		{
+			HitSoundIndex = HitPhysicalMaterials.Find(HitPhysicalMaterial);
+
+			if (HitSounds.IsValidIndex(HitSoundIndex))
+			{
+				ChosenHitSound = HitSounds[HitSoundIndex];
+			}
+			else
+			{
+				ChosenHitSound = DefaultBulletHitSound;
+			}
 		}
 		else
 		{
 			ChosenHitSound = DefaultBulletHitSound;
 		}
-	}
-	else
-	{
-		ChosenHitSound = DefaultBulletHitSound;
-	}
 
-	if (ChosenHitSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(GetWorld(), ChosenHitSound, GunHitEffectsReplication.HitLocation);
-	}
-
-	UMaterialInterface* ChosenDecal;
-
-	int DecalIndex;
-	TArray<UMaterialInterface*> DecalMaterials;
-	TArray<UPhysicalMaterial*> DecalPhysicalMaterials;
-
-	BulletHitDecals.GenerateKeyArray(DecalMaterials);
-	BulletHitDecals.GenerateValueArray(DecalPhysicalMaterials);
-
-	if (DecalPhysicalMaterials.Contains(HitPhysicalMaterial))
-	{
-		DecalIndex = DecalPhysicalMaterials.Find(HitPhysicalMaterial);
-
-		if (DecalMaterials.IsValidIndex(DecalIndex))
+		if (ChosenHitSound)
 		{
-			ChosenDecal = DecalMaterials[DecalIndex];
+			UGameplayStatics::PlaySoundAtLocation(GetWorld(), ChosenHitSound, GunHitEffectsReplication.HitLocation);
+		}
+
+		UMaterialInterface* ChosenDecal;
+
+		int DecalIndex;
+		TArray<UMaterialInterface*> DecalMaterials;
+		TArray<UPhysicalMaterial*> DecalPhysicalMaterials;
+
+		BulletHitDecals.GenerateKeyArray(DecalMaterials);
+		BulletHitDecals.GenerateValueArray(DecalPhysicalMaterials);
+
+		if (DecalPhysicalMaterials.Contains(HitPhysicalMaterial))
+		{
+			DecalIndex = DecalPhysicalMaterials.Find(HitPhysicalMaterial);
+
+			if (DecalMaterials.IsValidIndex(DecalIndex))
+			{
+				ChosenDecal = DecalMaterials[DecalIndex];
+			}
+			else
+			{
+				ChosenDecal = DefaultBulletHitDecal;
+			}
 		}
 		else
 		{
 			ChosenDecal = DefaultBulletHitDecal;
 		}
-	}
-	else
-	{
-		ChosenDecal = DefaultBulletHitDecal;
-	}
 
-	if (ChosenDecal)
-	{
-		UGameplayStatics::SpawnDecalAtLocation(GetWorld(), ChosenDecal, BulletHitDecalSize, GunHitEffectsReplication.HitLocation, GunHitEffectsReplication.HitRotation);
+		if (ChosenDecal)
+		{
+			UGameplayStatics::SpawnDecalAtLocation(GetWorld(), ChosenDecal, BulletHitDecalSize, GunHitEffectsReplication.HitLocation, GunHitEffectsReplication.HitRotation);
+		}
 	}
 }
 
@@ -1816,8 +1844,8 @@ void AMultiplayerGun::SpawnProjectile_Implementation(FVector FireLocation, FRota
 
 		if (AMultiplayerProjectile* SpawnedProjectile = GetWorld()->SpawnActor<AMultiplayerProjectile>(ProjectileToSpawn, FireLocation, FireRotation, SpawnParams))
 		{
-			SpawnedProjectile->ProjectileMesh->IgnoreActorWhenMoving(OwningPlayer, true);
-			SpawnedProjectile->SetOwningPlayer(OwningPlayer);
+			SpawnedProjectile->ProjectileMesh->IgnoreActorWhenMoving(GetOwningPlayer(), true);
+			SpawnedProjectile->SetOwningPlayer(GetOwningPlayer());
 			SpawnedProjectile->SetLaunchPhysicsObjects(LaunchPhysicsObjects);
 			SpawnedProjectile->SetLaunchObjectStrength(LaunchObjectStrength);
 			SpawnedProjectile->SetLaunchObjectVelocityChange(LaunchObjectVelocityChange);
@@ -1861,7 +1889,7 @@ void AMultiplayerGun::SpawnProjectile_Implementation(FVector FireLocation, FRota
 
 			if (ProjectileInheritsVelocity == true)
 			{
-				if (ACharacter* CharacterCast = Cast<ACharacter>(OwningPlayer))
+				if (ACharacter* CharacterCast = Cast<ACharacter>(GetOwningPlayer()))
 				{
 					SpawnedProjectile->ProjectileMovement->Velocity += CharacterCast->GetCharacterMovement()->Velocity;
 				}
@@ -1899,9 +1927,9 @@ void AMultiplayerGun::SpawnBulletCasing_Implementation()
 				SpawnedCasing->SetOwningGun(this);
 				SpawnedBulletCasings.EmplaceAt(0, SpawnedCasing);
 
-				if (BulletCasingInheritsVelocity == true && OwningPlayer)
+				if (BulletCasingInheritsVelocity == true && GetOwningPlayer())
 				{
-					if (ACharacter* CharacterCast = Cast<ACharacter>(OwningPlayer))
+					if (ACharacter* CharacterCast = Cast<ACharacter>(GetOwningPlayer()))
 					{
 						SpawnedCasing->BulletCasingMesh->AddImpulse(CharacterCast->GetCharacterMovement()->Velocity, NAME_None, true);
 					}
@@ -1974,9 +2002,9 @@ void AMultiplayerGun::StopFiring(bool EvenCancelBurst)
 	{
 		StopContinuousFire_BP();
 
-		if (OwningPlayer && FireControllerVibration)
+		if (GetOwningPlayer() && FireControllerVibration)
 		{
-			if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(OwningPlayer->GetController()))
+			if (AMultiplayerPlayerController* ControllerCast = Cast<AMultiplayerPlayerController>(GetOwningPlayer()->GetController()))
 			{
 				ControllerCast->ClientStopForceFeedback(FireControllerVibration, FireControllerVibrationTag);
 			}
@@ -2145,6 +2173,7 @@ void AMultiplayerGun::ApplyPerspective(bool ThirdPerson)
 
 void AMultiplayerGun::SetCanShoot(bool NewCanShoot)
 {
+	SwitchedFireToServer = false;
 	CanShoot = NewCanShoot;
 
 	if (NewCanShoot == false)

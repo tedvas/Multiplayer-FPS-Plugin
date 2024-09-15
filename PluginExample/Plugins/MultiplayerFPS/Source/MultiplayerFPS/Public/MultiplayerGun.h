@@ -134,7 +134,7 @@ public:
 	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
 	virtual void MulticastSetPickupCollisionEnabled();
 
-	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "For ReplicationMethod 0 = Not replicated, 1 = Server only, 2 = Multicast only, 3 = Both server and multicast", ClampMin = 0, ClampMax = 3))
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "For ReplicationMethod 0 = Not replicated, 1 = Server only, 2 = Multicast only, 3 = Both server and multicast, 4 = Server if client and multicast if host", ClampMin = 0, ClampMax = 4))
 	virtual void SetOwningPlayer(APawn* NewOwningPlayer, int ReplicationMethod = 0);
 
 	UFUNCTION(Server, Reliable, Category = "Functions", meta = (ClampMin = 0, ClampMax = 3))
