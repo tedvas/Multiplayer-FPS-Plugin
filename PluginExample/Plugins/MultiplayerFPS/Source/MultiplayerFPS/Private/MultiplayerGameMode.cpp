@@ -5,6 +5,8 @@
 
 void AMultiplayerGameMode::PostLogin(APlayerController* NewPlayer)
 {
+	Super::PostLogin(NewPlayer);
+
 	AddPlayerController(NewPlayer);
 }
 
