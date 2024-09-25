@@ -74,6 +74,24 @@ public:
 	virtual bool GetUsingThirdPerson();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetUsingThirdPersonLeftShoulder(bool NewUsingThirdPersonLeftShoulder);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetUsingThirdPersonLeftShoulder();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCanShoulderSwapThirdPerson(bool NewCanShoulderSwapThirdPerson);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetCanShoulderSwapThirdPerson();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCanShoulderSwapWhileInFirstPerson(bool NewCanShoulderSwapWhileInFirstPerson);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetCanShoulderSwapWhileInFirstPerson();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetGiveLoadoutOnBeginPlay(bool NewGiveLoadoutOnBeginPlay);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
@@ -198,8 +216,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Perspective", meta = (Tooltip = "Set this to true if you want third person to be default"))
 	bool UsingThirdPerson;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Perspective", meta = (Tooltip = "Set this to true to default it to the left shoulder"))
+	bool UsingThirdPersonLeftShoulder;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "Perspective = first or third person"))
 	bool CanSwitchPerspective;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	bool CanShoulderSwapThirdPerson;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "This will make it to where if you press the shoulder swap button while in first person it will swap the shoulder for when you go into third person"))
+	bool CanShoulderSwapWhileInFirstPerson;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "This will just detect whether the last input was with a keyboard and mouse or a controller"))
 	bool UsingGamepad;

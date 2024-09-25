@@ -62,6 +62,9 @@ class MULTIPLAYERFPS_API AMultiplayerCharacter : public ACharacter
 	UInputAction* IA_SwitchPerspective;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
+	UInputAction* IA_ThirdPersonShoulderSwap;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
 	UInputAction* IA_SwitchToWeapon1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
@@ -170,6 +173,9 @@ public:
 	virtual void MulticastPickupItem(AInteractableItem* ItemToPickup);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ToggleThirdPerson();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetUsingThirdPerson(bool NewUsingThirdPerson, bool SnapCameraLocation = false);
 
 	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions")
@@ -190,14 +196,32 @@ public:
 	UPROPERTY()
 	bool AppliedPerspectiveVisibilityOnClient = false;
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
-	virtual void ToggleThirdPerson();
-
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void SwitchPerspective_BP(bool NewUsingThirdPerson, bool SnapCameraLocation = false);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetUsingThirdPerson();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SwapShoulders();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetThirdPersonShoulder(bool LeftShoulder, bool SnapCameraLocation = false);
+
+	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions")
+	virtual void ClientSetThirdPersonShoulder(bool LeftShoulder, bool SnapCameraLocation = false);
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void ServerSetThirdPersonShoulder(bool LeftShoulder);
+
+	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastSetThirdPersonShoulder(bool LeftShoulder);
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void SetThirdPersonShoulder_BP(bool LeftShoulder, bool SnapCameraLocation = false);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual float GetThirdPersonSpringArmLength();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetCanInteract(bool NewCanInteract);
@@ -601,18 +625,27 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Replicated, Category = "Perspective", meta = (Tooltip = "Set this to true if you want third person to be default, set this in the player controller"))
 	bool UsingThirdPerson;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "Set this to true to default it to the left shoulder, set this in the player controller"))
+	bool UsingThirdPersonLeftShoulder;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
 	float FirstPersonSpringArmLength;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
-	float ThirdPersonSpringArmLength;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "This is for the right shoulder"))
+	float ThirdPersonSpringArmLengthRight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "This is for the left shoulder"))
+	float ThirdPersonSpringArmLengthLeft;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
 	FVector FirstPersonSpringArmLocation;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
-	FVector ThirdPersonSpringArmLocation;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "This is for the right shoulder"))
+	FVector ThirdPersonSpringArmLocationRight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "This is for the left shoulder"))
+	FVector ThirdPersonSpringArmLocationLeft;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
 	bool AttachSpringArmToPlayerModelFirstPerson;
@@ -652,6 +685,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
 	float PerspectiveTransitionTime;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
+	float ShoulderSwapTime;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Perspective")
 	bool HidePlayerModelMeshInFirstPerson;
