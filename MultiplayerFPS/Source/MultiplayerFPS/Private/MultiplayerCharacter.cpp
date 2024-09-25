@@ -62,10 +62,13 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	IMC_Priority = 0;
 	CurrentFOV = 90.0f;
 	UsingThirdPerson = false;
+	UsingThirdPersonLeftShoulder = false;
 	FirstPersonSpringArmLength = 0.0f;
-	ThirdPersonSpringArmLength = 100.0f;
+	ThirdPersonSpringArmLengthRight = 100.0f;
+	ThirdPersonSpringArmLengthLeft = 100.0f;
 	FirstPersonSpringArmLocation = FVector(0.0f, 35.0f, 0.0f);
-	ThirdPersonSpringArmLocation = FVector(0.0f, 40.0f, 60.0f);
+	ThirdPersonSpringArmLocationRight = FVector(0.0f, 40.0f, 60.0f);
+	ThirdPersonSpringArmLocationLeft = FVector(0.0f, -40.0f, 60.0f);
 	AttachSpringArmToPlayerModelFirstPerson = true;
 	SocketToAttachSpringArmToFirstPerson = "head";
 	FirstPersonCameraLag = false;
@@ -77,6 +80,7 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	ThirdPersonCameraLagSpeed = 30.0f;
 	ThirdPersonCameraRotationLagSpeed = 30.0f;
 	PerspectiveTransitionTime = 0.25f;
+	ShoulderSwapTime = 0.2f;
 	HidePlayerModelMeshInFirstPerson = true;
 	HideFirstPersonArmsAndGunInFirstPerson = false;
 	HideFirstPersonArmsWithoutWeapon = true;
@@ -530,6 +534,21 @@ void AMultiplayerCharacter::MulticastPickupItem_Implementation(AInteractableItem
 	}
 }
 
+void AMultiplayerCharacter::ToggleThirdPerson()
+{
+	if (GetOwningController())
+	{
+		if (GetOwningController()->GetCanSwitchPerspective())
+		{
+			SetUsingThirdPerson(!GetUsingThirdPerson(), false);
+		}
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningController Invalid MultiplayerCharacter.cpp:ToggleThirdPerson");
+	}
+}
+
 void AMultiplayerCharacter::SetUsingThirdPerson(bool NewUsingThirdPerson, bool SnapCameraLocation)
 {
 	if (HasAuthority())
@@ -579,8 +598,15 @@ void AMultiplayerCharacter::ClientSetUsingThirdPerson_Implementation(bool NewUsi
 				{
 					SpringArm->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
 				}
-				
-				UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocation, SpringArm->GetRelativeRotation(), true, true, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
+
+				if (UsingThirdPersonLeftShoulder == true)
+				{
+					UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationLeft, SpringArm->GetRelativeRotation(), true, true, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
+				}
+				else
+				{
+					UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationRight, SpringArm->GetRelativeRotation(), true, true, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
+				}
 			}
 			else
 			{
@@ -600,9 +626,17 @@ void AMultiplayerCharacter::ClientSetUsingThirdPerson_Implementation(bool NewUsi
 				{
 					SpringArm->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
 				}
-				
-				SpringArm->SetRelativeLocation(ThirdPersonSpringArmLocation);
-				SpringArm->TargetArmLength = ThirdPersonSpringArmLength;
+
+				if (UsingThirdPersonLeftShoulder == true)
+				{
+					SpringArm->SetRelativeLocation(ThirdPersonSpringArmLocationLeft);
+					SpringArm->TargetArmLength = ThirdPersonSpringArmLengthLeft;
+				}
+				else
+				{
+					SpringArm->SetRelativeLocation(ThirdPersonSpringArmLocationRight);
+					SpringArm->TargetArmLength = ThirdPersonSpringArmLengthRight;
+				}
 			}
 			else
 			{
@@ -741,13 +775,18 @@ void AMultiplayerCharacter::ClientApplyPerspectiveVisibility_Implementation()
 	ApplyPerspectiveVisibility();
 }
 
-void AMultiplayerCharacter::ToggleThirdPerson()
+bool AMultiplayerCharacter::GetUsingThirdPerson()
+{
+	return UsingThirdPerson;
+}
+
+void AMultiplayerCharacter::SwapShoulders()
 {
 	if (GetOwningController())
 	{
-		if (GetOwningController()->GetCanSwitchPerspective())
+		if (GetOwningController()->GetCanShoulderSwapThirdPerson())
 		{
-			SetUsingThirdPerson(!GetUsingThirdPerson(), false);
+			SetThirdPersonShoulder(!UsingThirdPersonLeftShoulder, false);
 		}
 	}
 	else
@@ -756,9 +795,108 @@ void AMultiplayerCharacter::ToggleThirdPerson()
 	}
 }
 
-bool AMultiplayerCharacter::GetUsingThirdPerson()
+void AMultiplayerCharacter::SetThirdPersonShoulder(bool LeftShoulder, bool SnapCameraLocation)
 {
-	return UsingThirdPerson;
+	if (HasAuthority())
+	{
+		MulticastSetThirdPersonShoulder(LeftShoulder);
+	}
+	else
+	{
+		ServerSetThirdPersonShoulder(LeftShoulder);
+	}
+
+	ClientSetThirdPersonShoulder(LeftShoulder, SnapCameraLocation);
+}
+
+void AMultiplayerCharacter::ClientSetThirdPersonShoulder_Implementation(bool LeftShoulder, bool SnapCameraLocation)
+{
+	if (GetOwningController())
+	{
+		if (GetUsingThirdPerson() == false && GetOwningController()->GetCanShoulderSwapWhileInFirstPerson())
+		{
+			UsingThirdPersonLeftShoulder = LeftShoulder;
+
+			GetOwningController()->SetUsingThirdPersonLeftShoulder(LeftShoulder);
+		}
+
+		if (GetUsingThirdPerson() == true)
+		{
+			UsingThirdPersonLeftShoulder = LeftShoulder;
+
+			GetOwningController()->SetUsingThirdPersonLeftShoulder(LeftShoulder);
+			
+			if (SpringArm)
+			{
+				SetThirdPersonShoulder_BP(LeftShoulder, SnapCameraLocation);
+
+				FLatentActionInfo LatentActionInfo;
+				LatentActionInfo.CallbackTarget = this;
+
+				if (SnapCameraLocation == false)
+				{
+					if (LeftShoulder == true)
+					{
+						UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationLeft, SpringArm->GetRelativeRotation(), true, true, ShoulderSwapTime, false, EMoveComponentAction::Move, LatentActionInfo);
+					}
+					else
+					{
+						UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationRight, SpringArm->GetRelativeRotation(), true, true, ShoulderSwapTime, false, EMoveComponentAction::Move, LatentActionInfo);
+					}
+				}
+				else
+				{
+					if (LeftShoulder == true)
+					{
+						SpringArm->SetRelativeLocation(ThirdPersonSpringArmLocationLeft);
+						SpringArm->TargetArmLength = ThirdPersonSpringArmLengthLeft;
+					}
+					else
+					{
+						SpringArm->SetRelativeLocation(ThirdPersonSpringArmLocationRight);
+						SpringArm->TargetArmLength = ThirdPersonSpringArmLengthRight;
+					}
+				}
+			}
+			else
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "SpringArm Component Invalid MultiplayerCharacter.cpp:ClientSetThirdPersonShoulder");
+			}
+		}
+	}
+	else
+	{
+		if (HasAuthority())
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Server OwningController Invalid MultiplayerCharacter.cpp:ClientSetThirdPersonShoulder");
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Client OwningController Invalid MultiplayerCharacter.cpp:ClientSetThirdPersonShoulder");
+		}
+	}
+}
+
+void AMultiplayerCharacter::ServerSetThirdPersonShoulder_Implementation(bool LeftShoulder)
+{
+	MulticastSetThirdPersonShoulder(LeftShoulder);
+}
+
+void AMultiplayerCharacter::MulticastSetThirdPersonShoulder_Implementation(bool LeftShoulder)
+{
+	UsingThirdPersonLeftShoulder = LeftShoulder;
+}
+
+float AMultiplayerCharacter::GetThirdPersonSpringArmLength()
+{
+	if (UsingThirdPersonLeftShoulder == true)
+	{
+		return ThirdPersonSpringArmLengthLeft;
+	}
+	else
+	{
+		return ThirdPersonSpringArmLengthRight;
+	}
 }
 
 void AMultiplayerCharacter::SetCanInteract(bool NewCanInteract)
@@ -3286,6 +3424,7 @@ void AMultiplayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInputComponent->BindAction(IA_SwitchWeapons, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchWeaponsInput);
 		EnhancedInputComponent->BindAction(IA_GamepadSwitchWeapons, ETriggerEvent::Started, this, &AMultiplayerCharacter::NextWeapon);
 		EnhancedInputComponent->BindAction(IA_SwitchPerspective, ETriggerEvent::Started, this, &AMultiplayerCharacter::ToggleThirdPerson);
+		EnhancedInputComponent->BindAction(IA_ThirdPersonShoulderSwap, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwapShoulders);
 		EnhancedInputComponent->BindAction(IA_SwitchToWeapon1, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchToWeapon1);
 		EnhancedInputComponent->BindAction(IA_SwitchToWeapon2, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchToWeapon2);
 	}
