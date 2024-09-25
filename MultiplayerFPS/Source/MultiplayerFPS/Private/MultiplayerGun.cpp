@@ -165,7 +165,11 @@ AMultiplayerGun::AMultiplayerGun()
 	BulletHitModeDelay = 0.0f;
 	FireControllerVibrationTag = "Fire";
 	BulletHitControllerVibrationTag = "Hit";
+	SpawnFireSoundAttached = true;
+	SpawnFireSound2DForOwner = true;
+	SpawnFireSound2DForOwnerThirdPerson = true;
 	HitEffectScale = FVector(1.0f, 1.0f, 1.0f);
+	SpawnMuzzleFlashAttached = true;
 	ReplicateMuzzleFlashLocation = false;
 	UseFirstPersonRotationForThirdPersonMuzzleFlash = false;
 	BulletWhizzingSoundVolumeBasedOnSpeed = true;
@@ -716,16 +720,58 @@ void AMultiplayerGun::Fire()
 				{
 					if (FireMode != 3)
 					{
-						if (GetFireSceneToUse())
+						if (GetFireSceneToUse() && GetOwningPlayerCast())
 						{
 							if (FireSound)
 							{
-								UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation());
+								if (SpawnFireSoundAttached == true)
+								{
+									if (((SpawnFireSound2DForOwner == true && GetOwningPlayerCast()->GetUsingThirdPerson() == false) || (SpawnFireSound2DForOwnerThirdPerson == true && GetOwningPlayerCast()->GetUsingThirdPerson() == true)) && GetOwningPlayerCast()->IsLocallyControlled() == true)
+									{
+										UGameplayStatics::SpawnSound2D(GetWorld(), FireSound);
+									}
+									else
+									{
+										if (GetOwningPlayerCast()->GetUsingThirdPerson() == true)
+										{
+											UGameplayStatics::SpawnSoundAttached(FireSound, GetFireSceneToUse(), NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, ThirdPersonFireSoundAttenuationOverride);
+										}
+										else
+										{
+											UGameplayStatics::SpawnSoundAttached(FireSound, GetFireSceneToUse(), NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, FireSoundAttenuationOverride);
+										}
+									}
+								}
+								else
+								{
+									if (((SpawnFireSound2DForOwner == true && GetOwningPlayerCast()->GetUsingThirdPerson() == false) || (SpawnFireSound2DForOwnerThirdPerson == true && GetOwningPlayerCast()->GetUsingThirdPerson() == true)) && GetOwningPlayerCast()->IsLocallyControlled() == true)
+									{
+										UGameplayStatics::SpawnSound2D(GetWorld(), FireSound);
+									}
+									else
+									{
+										if (GetOwningPlayerCast()->GetUsingThirdPerson() == true)
+										{
+											UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation(), FRotator::ZeroRotator, 1, 1, 0, ThirdPersonFireSoundAttenuationOverride);
+										}
+										else
+										{
+											UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation(), FRotator::ZeroRotator, 1, 1, 0, FireSoundAttenuationOverride);
+										}
+									}
+								}
 							}
 
 							if (MuzzleFlash)
 							{
-								UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+								if (SpawnMuzzleFlashAttached == true)
+								{
+									UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+								}
+								else
+								{
+									UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MuzzleFlash, GetFireSceneToUse()->GetComponentLocation());
+								}
 							}
 						}
 						else
@@ -1368,16 +1414,58 @@ void AMultiplayerGun::Fire()
 				{
 					if (FireMode != 3)
 					{
-						if (GetFireSceneToUse())
+						if (GetFireSceneToUse() && GetOwningPlayerCast())
 						{
 							if (FireSound)
 							{
-								UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation());
+								if (SpawnFireSoundAttached == true)
+								{
+									if (((SpawnFireSound2DForOwner == true && GetOwningPlayerCast()->GetUsingThirdPerson() == false) || (SpawnFireSound2DForOwnerThirdPerson == true && GetOwningPlayerCast()->GetUsingThirdPerson() == true)) && GetOwningPlayerCast()->IsLocallyControlled() == true)
+									{
+										UGameplayStatics::SpawnSound2D(GetWorld(), FireSound);
+									}
+									else
+									{
+										if (GetOwningPlayerCast()->GetUsingThirdPerson() == true)
+										{
+											UGameplayStatics::SpawnSoundAttached(FireSound, GetFireSceneToUse(), NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, ThirdPersonFireSoundAttenuationOverride);
+										}
+										else
+										{
+											UGameplayStatics::SpawnSoundAttached(FireSound, GetFireSceneToUse(), NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, FireSoundAttenuationOverride);
+										}
+									}
+								}
+								else
+								{
+									if (((SpawnFireSound2DForOwner == true && GetOwningPlayerCast()->GetUsingThirdPerson() == false) || (SpawnFireSound2DForOwnerThirdPerson == true && GetOwningPlayerCast()->GetUsingThirdPerson() == true)) && GetOwningPlayerCast()->IsLocallyControlled() == true)
+									{
+										UGameplayStatics::SpawnSound2D(GetWorld(), FireSound);
+									}
+									else
+									{
+										if (GetOwningPlayerCast()->GetUsingThirdPerson() == true)
+										{
+											UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation(), FRotator::ZeroRotator, 1, 1, 0, ThirdPersonFireSoundAttenuationOverride);
+										}
+										else
+										{
+											UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation(), FRotator::ZeroRotator, 1, 1, 0, FireSoundAttenuationOverride);
+										}
+									}
+								}
 							}
 
 							if (MuzzleFlash)
 							{
-								UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+								if (SpawnMuzzleFlashAttached == true)
+								{
+									UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+								}
+								else
+								{
+									UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MuzzleFlash, GetFireSceneToUse()->GetComponentLocation());
+								}
 							}
 						}
 						else
@@ -1623,16 +1711,58 @@ void AMultiplayerGun::ShotgunFire()
 
 		if (FireMode != 3)
 		{
-			if (GetFireSceneToUse())
+			if (GetFireSceneToUse() && GetOwningPlayerCast())
 			{
 				if (FireSound)
 				{
-					UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation());
+					if (SpawnFireSoundAttached == true)
+					{
+						if (((SpawnFireSound2DForOwner == true && GetOwningPlayerCast()->GetUsingThirdPerson() == false) || (SpawnFireSound2DForOwnerThirdPerson == true && GetOwningPlayerCast()->GetUsingThirdPerson() == true)) && GetOwningPlayerCast()->IsLocallyControlled() == true)
+						{
+							UGameplayStatics::SpawnSound2D(GetWorld(), FireSound);
+						}
+						else
+						{
+							if (GetOwningPlayerCast()->GetUsingThirdPerson() == true)
+							{
+								UGameplayStatics::SpawnSoundAttached(FireSound, GetFireSceneToUse(), NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, ThirdPersonFireSoundAttenuationOverride);
+							}
+							else
+							{
+								UGameplayStatics::SpawnSoundAttached(FireSound, GetFireSceneToUse(), NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, FireSoundAttenuationOverride);
+							}
+						}
+					}
+					else
+					{
+						if (((SpawnFireSound2DForOwner == true && GetOwningPlayerCast()->GetUsingThirdPerson() == false) || (SpawnFireSound2DForOwnerThirdPerson == true && GetOwningPlayerCast()->GetUsingThirdPerson() == true)) && GetOwningPlayerCast()->IsLocallyControlled() == true)
+						{
+							UGameplayStatics::SpawnSound2D(GetWorld(), FireSound);
+						}
+						else
+						{
+							if (GetOwningPlayerCast()->GetUsingThirdPerson() == true)
+							{
+								UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation(), FRotator::ZeroRotator, 1, 1, 0, ThirdPersonFireSoundAttenuationOverride);
+							}
+							else
+							{
+								UGameplayStatics::PlaySoundAtLocation(GetWorld(), FireSound, GetFireSceneToUse()->GetComponentLocation(), FRotator::ZeroRotator, 1, 1, 0, FireSoundAttenuationOverride);
+							}
+						}
+					}
 				}
 
 				if (MuzzleFlash)
 				{
-					UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+					if (SpawnMuzzleFlashAttached == true)
+					{
+						UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+					}
+					else
+					{
+						UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MuzzleFlash, GetFireSceneToUse()->GetComponentLocation());
+					}
 				}
 			}
 			else
@@ -1762,7 +1892,14 @@ void AMultiplayerGun::OnRep_GunHitEffects()
 
 		if (MuzzleFlash && GetFireSceneToUse())
 		{
-			UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+			if (SpawnMuzzleFlashAttached == true)
+			{
+				UGameplayStatics::SpawnEmitterAttached(MuzzleFlash, GetFireSceneToUse());
+			}
+			else
+			{
+				UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MuzzleFlash, GetFireSceneToUse()->GetComponentLocation());
+			}
 		}
 
 		USoundBase* ChosenHitSound;

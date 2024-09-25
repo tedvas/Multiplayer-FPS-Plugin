@@ -11,12 +11,12 @@ void AMultiplayerGameMode::PostLogin(APlayerController* NewPlayer)
 
 void AMultiplayerGameMode::Logout(AController* ExitingPlayer)
 {
-	Super::Logout(ExitingPlayer);
-
 	if (APlayerController* ControllerCast = Cast<APlayerController>(ExitingPlayer))
 	{
 		RemovePlayerController(ControllerCast);
 	}
+	
+	Super::Logout(ExitingPlayer);
 }
 
 void AMultiplayerGameMode::AddPlayerController(APlayerController* NewController)
