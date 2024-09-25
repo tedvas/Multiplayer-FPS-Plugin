@@ -30,6 +30,8 @@ AMultiplayerPlayerController::AMultiplayerPlayerController()
 	PlayerIndex = 0;
 	UsingThirdPerson = false;
 	CanSwitchPerspective = true;
+	CanShoulderSwapThirdPerson = true;
+	CanShoulderSwapWhileInFirstPerson = true;
 	UsingGamepad = false;
 	GiveLoadoutOnBeginPlay = true;
 	MaxWeaponAmount = 2;
@@ -352,6 +354,7 @@ void AMultiplayerPlayerController::ApplySettingsToCharacter()
 
 		if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(GetControlledPawn()))
 		{
+			PlayerCast->UsingThirdPersonLeftShoulder = GetUsingThirdPersonLeftShoulder();
 			PlayerCast->SetUsingThirdPerson(GetUsingThirdPerson(), true);
 			PlayerCast->FieldOfView = FieldOfView;
 			PlayerCast->MouseDefaultSensitivityX = MouseDefaultSensitivityX;
@@ -508,6 +511,36 @@ bool AMultiplayerPlayerController::GetUsingThirdPerson()
 	return UsingThirdPerson;
 }
 
+void AMultiplayerPlayerController::SetUsingThirdPersonLeftShoulder(bool NewUsingThirdPersonLeftShoulder)
+{
+	UsingThirdPersonLeftShoulder = NewUsingThirdPersonLeftShoulder;
+}
+
+bool AMultiplayerPlayerController::GetUsingThirdPersonLeftShoulder()
+{
+	return UsingThirdPersonLeftShoulder;
+}
+
+void AMultiplayerPlayerController::SetCanShoulderSwapThirdPerson(bool NewCanShoulderSwapThirdPerson)
+{
+	CanShoulderSwapThirdPerson = NewCanShoulderSwapThirdPerson;
+}
+
+bool AMultiplayerPlayerController::GetCanShoulderSwapThirdPerson()
+{
+	return CanShoulderSwapThirdPerson;
+}
+
+void AMultiplayerPlayerController::SetCanShoulderSwapWhileInFirstPerson(bool NewCanShoulderSwapWhileInFirstPerson)
+{
+	CanShoulderSwapWhileInFirstPerson = NewCanShoulderSwapWhileInFirstPerson;
+}
+
+bool AMultiplayerPlayerController::GetCanShoulderSwapWhileInFirstPerson()
+{
+	return CanShoulderSwapWhileInFirstPerson;
+}
+
 void AMultiplayerPlayerController::SetGiveLoadoutOnBeginPlay(bool NewGiveLoadoutOnBeginPlay)
 {
 	GiveLoadoutOnBeginPlay = NewGiveLoadoutOnBeginPlay;
@@ -617,4 +650,5 @@ void AMultiplayerPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimePr
 	DOREPLIFETIME(AMultiplayerPlayerController, WeaponChoices);
 	DOREPLIFETIME(AMultiplayerPlayerController, MaxWeaponAmount);
 	DOREPLIFETIME(AMultiplayerPlayerController, UsingThirdPerson);
+	DOREPLIFETIME(AMultiplayerPlayerController, UsingThirdPersonLeftShoulder);
 }

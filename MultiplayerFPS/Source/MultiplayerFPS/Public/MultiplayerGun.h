@@ -836,6 +836,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
 	UParticleSystem* MuzzleFlash;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If this is true then the muzzle flash will move with the gun instead of staying in the same spot"))
+	bool SpawnMuzzleFlashAttached;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If this is false other players will see the muzzle flash at the ThirdPersonFireSceneComponent, if this is true other players will see the muzzle flash in the same location as the player firing"))
 	bool ReplicateMuzzleFlashLocation;
 
@@ -904,6 +907,21 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
 	USoundBase* FireSound;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "If this is true then the fire sound will move with the gun instead of staying in the same spot"))
+	bool SpawnFireSoundAttached;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "This will only affect the player firing the gun, this is to avoid the sound being louder in one ear"))
+	bool SpawnFireSound2DForOwner;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "This will only affect the player firing the gun, this is to avoid the sound being louder in one ear"))
+	bool SpawnFireSound2DForOwnerThirdPerson;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	USoundAttenuation* FireSoundAttenuationOverride;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	USoundAttenuation* ThirdPersonFireSoundAttenuationOverride;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
 	USoundBase* ReloadGunSound;
