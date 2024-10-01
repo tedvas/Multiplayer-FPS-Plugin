@@ -28,10 +28,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual UUserWidget* GetUILastIndex();
 
-	UFUNCTION(BlueprintCallable, meta = (Tooltip = "Velocity options only apply to characters"), Category = "Functions")
-	virtual void PossessPawn(TSubclassOf<APawn> NewPawnToSpawn, APawn* NewPawn, bool SpawnNewPawn, FVector Location, FRotator Rotation, bool DestroyOldPawn, bool KeepControlRotation = true, bool KeepVelocity = false, bool ChangeStartingVelocity = false, FVector NewVelocity = FVector::ZeroVector);
+	UFUNCTION(BlueprintCallable, meta = (Tooltip = "Velocity options only apply to characters, UsePlayerPawnChoice will override NewPawnToSpawn and NewPawn and only applies if ChooseCharacterOnSpawn is not 0, keep velocity won't work if you have ChooseCharacterOnSpawn not at 0"), Category = "Functions")
+	virtual void PossessPawn(TSubclassOf<APawn> NewPawnToSpawn, APawn* NewPawn, bool SpawnNewPawn, FVector Location, FRotator Rotation, bool DestroyOldPawn, bool KeepControlRotation = true, bool KeepVelocity = false, bool ChangeStartingVelocity = false, FVector NewVelocity = FVector::ZeroVector, bool UsePlayerPawnChoice = false);
 
-	UFUNCTION(Server, Reliable, meta = (Tooltip = "Velocity options only apply to characters"), Category = "Functions")
+	UFUNCTION(Server, Reliable, meta = (Tooltip = "Velocity options only apply to characters, UsePlayerPawnChoice will override NewPawnToSpawn and NewPawn and only applies if ChooseCharacterOnSpawn is not 0, keep velocity won't work if you have ChooseCharacterOnSpawn not at 0"), Category = "Functions")
 	virtual void ServerPossessPawn(TSubclassOf<APawn> NewPawnToSpawn, APawn* NewPawn, bool SpawnNewPawn, FVector Location, FRotator Rotation, bool DestroyOldPawn, bool KeepControlRotation = true, bool KeepVelocity = false, bool ChangeStartingVelocity = false, FVector NewVelocity = FVector::ZeroVector);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
@@ -120,6 +120,45 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetAvoidDuplicatesForRandomWeapons();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetPlayerPawnClass(TSubclassOf<APawn> NewPlayerPawnClass);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual TSubclassOf<APawn> GetPlayerPawnClass();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHasSpawnedPlayer(bool NewHasSpawnedPlayer);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetHasSpawnedPlayer();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCanRespawn(bool NewCanRespawn);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetCanRespawn();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ChooseNewCharacter(TSubclassOf<APawn> NewCharacter);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetChooseCharacterOnRespawn(bool NewChooseCharacterOnRespawn);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetChooseCharacterOnRespawn();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCharacterSelectWidget(TSubclassOf<UUserWidget> NewCharacterSelectWidget);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual TSubclassOf<UUserWidget> GetCharacterSelectWidget();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetDieWhenChoosingNewCharacter(bool NewDieWhenChoosingNewCharacter);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetDieWhenChoosingNewCharacter();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetRespawnDelay(float NewRespawnDelay);
@@ -246,18 +285,40 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "This would be the name and amount of each caliber the player spawns with, only applies to guns that use this rather than their own reserve ammo", ClampMin = 0))
 	TMap<FName, int32> AllSharedCalibersOnSpawn;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Respawn", meta = (ClampMin = 0.0f))
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Spawning", meta = (Tooltip = "This is set to true if the PossessPawn function has executed"))
+	bool HasSpawnedPlayer;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning", meta = (Tooltip = "In order to change characters on respawn without the player choosing the character you just change this variable"))
+	TSubclassOf<APawn> PlayerPawnClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning", meta = (Tooltip = "Set this to false for one life modes, you will need to make it do something when the player dies, as of right now the player will just be soft locked"))
+	bool CanRespawn;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning", meta = (ClampMin = 0.0f))
 	float RespawnDelay;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Respawn")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning")
+	bool ChooseCharacterOnRespawn;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning", meta = (Tooltip = "If true choosing a new character will kill the player and immediately respawn them as the new character, if this is false the player will respawn as that new character when they die"))
+	bool DieWhenChoosingNewCharacter;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning", meta = (Tooltip = "If this is unassigned the game will act as if ChooseCharacterOnSpawn = 0"))
+	TSubclassOf<UUserWidget> CharacterSelectWidget;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning", meta = (Tooltip = "This is only used for the character selection menu"))
+	TMap<FName, TSubclassOf<APawn>> AllCharacters;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning")
 	bool ShowHUDOnRespawn;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Respawn", meta = (Tooltip = "If ShowHUDOnRespawn = true this will just remove all widget before showing the HUD"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawning", meta = (Tooltip = "If ShowHUDOnRespawn = true this will just remove all widget before showing the HUD"))
 	bool RemoveAllWidgetsOnRespawn;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	TMap<FVector, FRotator> RespawnPoints;
 
 	FTimerHandle GetControlledPawnTimerHandle;
+	FTimerDelegate RespawnTimerDelegate;
 	FTimerHandle RespawnTimerHandle;
 };

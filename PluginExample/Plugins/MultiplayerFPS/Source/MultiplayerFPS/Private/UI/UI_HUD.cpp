@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 // the reason you'll see weird parenthesis on if statements is for linux compatibility
 
-#include "UI_HUD.h"
+#include "UI/UI_HUD.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "MultiplayerHealthComponent.h"
 
