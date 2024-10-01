@@ -37,6 +37,10 @@ AMultiplayerPlayerController::AMultiplayerPlayerController()
 	MaxWeaponAmount = 2;
 	RandomizeUnselectedWeapons = true;
 	AvoidDuplicatesForRandomWeapons = 2;
+	HasSpawnedPlayer = false;
+	CanRespawn = true;
+	ChooseCharacterOnRespawn = false;
+	DieWhenChoosingNewCharacter = true;
 	RespawnDelay = 2.5f;
 	ShowHUDOnRespawn = true;
 	RemoveAllWidgetsOnRespawn = false;
@@ -210,15 +214,17 @@ UUserWidget* AMultiplayerPlayerController::GetUILastIndex()
 	}
 }
 
-void AMultiplayerPlayerController::PossessPawn(TSubclassOf<APawn> NewPawnToSpawn, APawn* NewPawn, bool SpawnNewPawn, FVector Location, FRotator Rotation, bool DestroyOldPawn, bool KeepControlRotation, bool KeepVelocity, bool ChangeStartingVelocity, FVector NewVelocity)
+void AMultiplayerPlayerController::PossessPawn(TSubclassOf<APawn> NewPawnToSpawn, APawn* NewPawn, bool SpawnNewPawn, FVector Location, FRotator Rotation, bool DestroyOldPawn, bool KeepControlRotation, bool KeepVelocity, bool ChangeStartingVelocity, FVector NewVelocity, bool UsePlayerPawnChoice)
 {
 	if (!HasAuthority())
 	{
 		ServerPossessPawn(NewPawnToSpawn, NewPawn, SpawnNewPawn, Location, Rotation, DestroyOldPawn, KeepControlRotation, KeepVelocity, ChangeStartingVelocity, NewVelocity);
 		return;
 	}
+	
+	SetHasSpawnedPlayer(true);
 
-	if ((SpawnNewPawn == true && NewPawnToSpawn) || (SpawnNewPawn == false && NewPawn))
+	if ((SpawnNewPawn == true && NewPawnToSpawn) || (SpawnNewPawn == false && NewPawn) || (UsePlayerPawnChoice == true && PlayerPawnClass))
 	{
 		FRotator CurrentControlRotation = GetControlRotation();
 		FVector CurrentVeloctiy = FVector(0.0f, 0.0f, 0.0f);
@@ -255,13 +261,20 @@ void AMultiplayerPlayerController::PossessPawn(TSubclassOf<APawn> NewPawnToSpawn
 
 		APawn* NewPawnToPossess = nullptr;
 
-		if (SpawnNewPawn == true)
+		if (SpawnNewPawn == true || (UsePlayerPawnChoice == true && PlayerPawnClass))
 		{
 			FActorSpawnParameters SpawnParams;
 			SpawnParams.bNoFail = true;
 			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-			NewPawnToPossess = GetWorld()->SpawnActor<APawn>(NewPawnToSpawn, Location, Rotation, SpawnParams);
+			TSubclassOf<APawn> PawnToUse = NewPawnToSpawn;
+
+			if (UsePlayerPawnChoice == true && PlayerPawnClass)
+			{
+				PawnToUse = PlayerPawnClass;
+			}
+
+			NewPawnToPossess = GetWorld()->SpawnActor<APawn>(PawnToUse, Location, Rotation, SpawnParams);
 		}
 		else
 		{
@@ -411,13 +424,31 @@ void AMultiplayerPlayerController::GiveLoadout_Implementation()
 
 void AMultiplayerPlayerController::Respawn(float DelayToRespawn)
 {
-	if (DelayToRespawn > 0)
+	if (CanRespawn == true)
 	{
-		GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &AMultiplayerPlayerController::Respawn1, DelayToRespawn, false, DelayToRespawn);
-	}
-	else
-	{
-		Respawn1();
+		if (DelayToRespawn > 0)
+		{
+			if (ChooseCharacterOnRespawn == false || !GetCharacterSelectWidget())
+			{
+				GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &AMultiplayerPlayerController::Respawn1, DelayToRespawn, false, DelayToRespawn);
+			}
+			else if (GetCharacterSelectWidget())
+			{
+				RespawnTimerDelegate.BindUFunction(this, "CreateUIWidget", GetCharacterSelectWidget(), 0, false, nullptr, true, true, true, false, false, false);
+				GetWorldTimerManager().SetTimer(RespawnTimerHandle, RespawnTimerDelegate, DelayToRespawn, false);
+			}
+		}
+		else
+		{
+			if (ChooseCharacterOnRespawn == false || !GetCharacterSelectWidget())
+			{
+				Respawn1();
+			}
+			else if (GetCharacterSelectWidget())
+			{
+				CreateUIWidget(GetCharacterSelectWidget(), 0, false, nullptr, true, true, true, false, false, false);
+			}
+		}
 	}
 }
 
@@ -457,11 +488,25 @@ void AMultiplayerPlayerController::Respawn1()
 
 			if (SetRotation == true)
 			{
-				PossessPawn(GetControlledPawn()->GetClass(), nullptr, true, Location, Rotation, false, false);
+				if (ChooseCharacterOnRespawn == false)
+				{
+					PossessPawn(GetControlledPawn()->GetClass(), nullptr, true, Location, Rotation, false, false);
+				}
+				else
+				{
+					PossessPawn(PlayerPawnClass, nullptr, true, Location, Rotation, false, false, false, false, FVector::ZeroVector, true);
+				}
 			}
 			else
 			{
-				PossessPawn(GetControlledPawn()->GetClass(), nullptr, true, Location, FRotator::ZeroRotator, false, true);
+				if (ChooseCharacterOnRespawn == false)
+				{
+					PossessPawn(GetControlledPawn()->GetClass(), nullptr, true, Location, FRotator::ZeroRotator, false, true);
+				}
+				else
+				{
+					PossessPawn(PlayerPawnClass, nullptr, true, Location, FRotator::ZeroRotator, false, true, false, false, FVector::ZeroVector, true);
+				}
 			}
 		}
 	}
@@ -600,6 +645,85 @@ void AMultiplayerPlayerController::SetAvoidDuplicatesForRandomWeapons(int NewAvo
 int AMultiplayerPlayerController::GetAvoidDuplicatesForRandomWeapons()
 {
 	return AvoidDuplicatesForRandomWeapons;
+}
+
+void AMultiplayerPlayerController::SetPlayerPawnClass(TSubclassOf<APawn> NewPlayerPawnClass)
+{
+	PlayerPawnClass = NewPlayerPawnClass;
+}
+
+TSubclassOf<APawn> AMultiplayerPlayerController::GetPlayerPawnClass()
+{
+	return PlayerPawnClass;
+}
+
+void AMultiplayerPlayerController::SetHasSpawnedPlayer(bool NewHasSpawnedPlayer)
+{
+	HasSpawnedPlayer = NewHasSpawnedPlayer;
+}
+
+bool AMultiplayerPlayerController::GetHasSpawnedPlayer()
+{
+	return HasSpawnedPlayer;
+}
+
+void AMultiplayerPlayerController::SetCanRespawn(bool NewCanRespawn)
+{
+	CanRespawn = NewCanRespawn;
+}
+
+bool AMultiplayerPlayerController::GetCanRespawn()
+{
+	return CanRespawn;
+}
+
+void AMultiplayerPlayerController::ChooseNewCharacter(TSubclassOf<APawn> NewCharacter)
+{
+	PlayerPawnClass = NewCharacter;
+
+	if (GetControlledPawn() && DieWhenChoosingNewCharacter == true)
+	{
+		if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(GetControlledPawn()))
+		{
+			if (PlayerCast->GetHealthComponent())
+			{
+				if (PlayerCast->GetHealthComponent()->GetHealth() > 0)
+				{
+					PlayerCast->GetHealthComponent()->SetHealth(0);
+				}
+			}
+		}
+	}
+}
+
+void AMultiplayerPlayerController::SetChooseCharacterOnRespawn(bool NewChooseCharacterOnRespawn)
+{
+	ChooseCharacterOnRespawn = NewChooseCharacterOnRespawn;
+}
+
+bool AMultiplayerPlayerController::GetChooseCharacterOnRespawn()
+{
+	return ChooseCharacterOnRespawn;
+}
+
+void AMultiplayerPlayerController::SetCharacterSelectWidget(TSubclassOf<UUserWidget> NewCharacterSelectWidget)
+{
+	CharacterSelectWidget = NewCharacterSelectWidget;
+}
+
+TSubclassOf<UUserWidget> AMultiplayerPlayerController::GetCharacterSelectWidget()
+{
+	return CharacterSelectWidget;
+}
+
+void AMultiplayerPlayerController::SetDieWhenChoosingNewCharacter(bool NewDieWhenChoosingNewCharacter)
+{
+	DieWhenChoosingNewCharacter = NewDieWhenChoosingNewCharacter;
+}
+
+bool AMultiplayerPlayerController::GetDieWhenChoosingNewCharacter()
+{
+	return DieWhenChoosingNewCharacter;
 }
 
 void AMultiplayerPlayerController::SetRespawnDelay(float NewRespawnDelay)
