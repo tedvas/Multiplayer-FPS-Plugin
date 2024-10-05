@@ -99,6 +99,11 @@ int UMultiplayerHealthComponent::GetHealth()
 	return Health;
 }
 
+bool UMultiplayerHealthComponent::GetIsDead()
+{
+	return GetHealth() <= 0;
+}
+
 void UMultiplayerHealthComponent::SetMaxHealth(int NewMaxHealth)
 {
 	MaxHealth = NewMaxHealth;
