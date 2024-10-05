@@ -80,6 +80,12 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual UMultiplayerHealthComponent* GetHealthComponent();
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions", meta = (Tooltip = "This will return -1 if the health component is invalid"))
+	virtual int GetHealth();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions", meta = (Tooltip = "This will return true if the health component is invalid"))
+	virtual bool GetIsDead();
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Components", meta = (Tooltip = "To change this either change it in C++ or in the construction script"))
 	USceneComponent* SpringArmParent;
 
@@ -321,6 +327,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual AMultiplayerGun* GetWeapon(bool GetCurrentWeapon = true, int WeaponIndex = -1);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetHasWeapon();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetWeaponIndex(AMultiplayerGun* Weapon);
@@ -724,9 +733,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "This will determine whether weapons are dropped or destroyed on death, 0 = destroy weapons, 1 = drop only the weapon being held, 2 = drop all weapons", ClampMin = 0, ClampMax = 2))
 	int DropWeaponsOnDeath;
 
+public:
+	
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	bool HoldingFireInput;
 
+protected:
+	
 	UPROPERTY(BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "This is only used for the default animation blueprint"))
 	bool HoldingJumpInput;
 
@@ -817,12 +830,24 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage", meta = (Tooltip = "Used to cancel vibration with continuous fire"))
 	FName DieControllerVibrationTag;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle GetPlayerControllerTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle DestroySelfTimerHandle;
-	FTimerDelegate SwitchWeaponsTimerDelegate;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle SwitchWeaponsTimerHandle;
+
+	FTimerDelegate SwitchWeaponsTimerDelegate;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle ReloadTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle ArmsAnimationModeTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle PlayerModelAnimationModeTimerHandle;
 
 public:

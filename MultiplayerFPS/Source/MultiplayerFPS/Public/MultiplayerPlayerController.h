@@ -318,7 +318,11 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	TMap<FVector, FRotator> RespawnPoints;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle GetControlledPawnTimerHandle;
-	FTimerDelegate RespawnTimerDelegate;
+	
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle RespawnTimerHandle;
+	
+	FTimerDelegate RespawnTimerDelegate;
 };
