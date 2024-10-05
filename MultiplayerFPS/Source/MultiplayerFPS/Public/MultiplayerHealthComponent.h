@@ -64,6 +64,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetHealth();
 
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetIsDead();
+
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetMaxHealth(int NewMaxHealth);
 
@@ -131,7 +134,10 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables", meta = (Tooltip = "Only applies when attached to players"))
 	APlayerController* OwningPlayerController;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle StartHealthRegenTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle HealthRegenTickTimerHandle;
 
 public:	
