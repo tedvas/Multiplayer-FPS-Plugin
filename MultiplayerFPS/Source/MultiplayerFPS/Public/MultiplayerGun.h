@@ -150,6 +150,24 @@ public:
 	virtual void FireInput();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ChargeUp();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ChargeUp1();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void ChargeUp_BP();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void CancelChargeUp();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void CancelChargeUp1();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void CancelChargeUp_BP();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	void Fire();
 
 	UFUNCTION(Server, Reliable, Category = "Functions")
@@ -344,6 +362,42 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int32 GetCaliberToUse();
 
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHasChargeUp(bool NewHasChargeup);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetHasChargeUp();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetHoldTriggerDuringChargeUp(bool NewHoldTriggerDuringChargeUp);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetHoldTriggerDuringChargeUp();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetChargeUpTime(float NewChargeUpTime);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual float GetChargeUpTime();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetCurrentChargeUpProgress(float NewCurrentChargeUpProgress);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual float GetCurrentChargeUpProgress();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void SetChargeUpProgressTimeForTimeline(float NewTime);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual float GetChargeUpTimeRemaining();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual UAnimMontage* GetChargeUpArmsAnimationMontage();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual UAnimationAsset* GetChargeUpArmsAnimation();
+
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetDoesOverheat();
 
@@ -424,7 +478,7 @@ public:
 
 protected:
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = Semi-Auto, 1 = Full-Auto, 2 = Burst, 3 = Continuous, continuous fire would be for something like a flamethrower that is constantly firing so for example sound isn't played when damage is applied it's looped until you stop firing if this is true it is recommended to set UseProjectile to false and BulletCasingToSpawn to none", ClampMin = 0, ClampMax = 3))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "0 = Semi-Auto, 1 = Full-Auto, 2 = Burst, 3 = Continuous, continuous fire would be for something like a flamethrower that is constantly firing so for example sound isn't played when damage is applied it's looped until you stop firing, if this is true it is recommended to set UseProjectile to false and BulletCasingToSpawn to none", ClampMin = 0, ClampMax = 3))
 	int FireMode;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This would be useful for something like a flamethrower that has an area of effect rather than having the player hit only what is in the center of the screen, does not apply if UseProjectile = true"))
@@ -498,6 +552,54 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Firing")
 	int32 PreDeterminedAimingSpreadWithMultiplierIndex;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chargeup", meta = (Tooltip = "If true there will be a chargeup before the gun can fire"))
+	bool HasChargeUp;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chargeup", meta = (Tooltip = "If true then releasing the trigger during the chargeup will cancel firing"))
+	bool HoldTriggerDuringChargeUp;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chargeup", meta = (Tooltip = "The amount of time it takes to chargeup", ClampMin = 0.0f))
+	float ChargeUpTime;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Chargeup")
+	float CurrentChargeUpProgress;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chargeup")
+	UParticleSystem* ChargeUpParticleEffect;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Chargeup")
+	UParticleSystemComponent* SpawnedChargeUpParticleEffect;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chargeup", meta = (Tooltip = "If this is true then the muzzle flash will move with the gun instead of staying in the same spot"))
+	bool SpawnChargeUpParticleAttached;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chargeup")
+	bool DestroyChargeUpParticleWhenChargeUpCanceled;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overheating", meta = (Tooltip = "Only applies if FireMode = 1 or 3, if this is true firing will make it overheat instead of using ammo"))
+	bool DoesOverheat;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overheating", meta = (Tooltip = "0 = can fire while cooling down, 1 = can't fire while cooling down if max heat is reached, 2 = can't fire while cooling down no matter what", ClampMin = 0, ClampMax = 2))
+	int ProhibitFiringWhileCoolingDown;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Overheating")
+	bool ReachedMaxHeat;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overheating", meta = (ClampMin = 0.001f))
+	float TimeToOverheat;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overheating", meta = (ClampMin = 0.001f))
+	float TimeToCooldown;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overheating", meta = (ClampMin = 0.0f))
+	float MaxHeat;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Overheating", meta = (ClampMin = 0.0f))
+	float CurrentHeat;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Overheating")
+	bool IsOverheating;
 
 public:
 
@@ -665,30 +767,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Ammo", meta = (Tooltip = "0 = limited ammo, 1 = infinite reserve ammo, 2 = infinite ammo, this will override DoesOverheat", ClampMin = 0, ClampMax = 2))
 	int InfiniteAmmo;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "Only applies if FireMode = 1 or 3, if this is true firing will make it overheat instead of using ammo"))
-	bool DoesOverheat;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "0 = can fire while cooling down, 1 = can't fire while cooling down if max heat is reached, 2 = can't fire while cooling down no matter what", ClampMin = 0, ClampMax = 2))
-	int ProhibitFiringWhileCoolingDown;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Ammo")
-	bool ReachedMaxHeat;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0.001f))
-	float TimeToOverheat;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0.001f))
-	float TimeToCooldown;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0.0f))
-	float MaxHeat;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = 0.0f))
-	float CurrentHeat;
-
-	UPROPERTY(BlueprintReadWrite, Category = "Ammo")
-	bool IsOverheating;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo")
 	TSubclassOf<AMultiplayerBulletCasing> BulletCasingToSpawn;
 
@@ -839,10 +917,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If this is true then the muzzle flash will move with the gun instead of staying in the same spot"))
 	bool SpawnMuzzleFlashAttached;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If this is false other players will see the muzzle flash at the ThirdPersonFireSceneComponent, if this is true other players will see the muzzle flash in the same location as the player firing"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "If this is false other players will see the muzzle flash at the ThirdPersonFireSceneComponent, if this is true other players will see the muzzle flash in the same location as the player firing, this also applies to the charge up particle if you have the gun charge up before firing"))
 	bool ReplicateMuzzleFlashLocation;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Firing", meta = (Tooltip = "This also applies to the charge up particle if you have the gun charge up before firing"))
 	bool UseFirstPersonRotationForThirdPersonMuzzleFlash;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Firing")
@@ -924,6 +1002,30 @@ protected:
 	USoundAttenuation* ThirdPersonFireSoundAttenuationOverride;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	USoundBase* ChargeUpSound;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Sound")
+	UAudioComponent* SpawnedChargeUpSound;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "If this is true then the fire sound will move with the gun instead of staying in the same spot"))
+	bool SpawnChargeUpSoundAttached;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "This will only affect the player firing the gun, this is to avoid the sound being louder in one ear"))
+	bool SpawnChargeUpSound2DForOwner;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "This will only affect the player firing the gun, this is to avoid the sound being louder in one ear"))
+	bool SpawnChargeUpSound2DForOwnerThirdPerson;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "Does not apply if SpawnChargeUpSoundAttached = false"))
+	bool DestroyChargeUpSoundWhenChargeUpCanceled;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	USoundAttenuation* ChargeUpSoundAttenuationOverride;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+	USoundAttenuation* ThirdPersonChargeUpSoundAttenuationOverride;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
 	USoundBase* ReloadGunSound;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Sound")
@@ -967,6 +1069,15 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Only applies if you are using a skeletal mesh for your gun"))
 	UAnimationAsset* FireGunAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	UAnimMontage* ChargeUpArmsAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	UAnimationAsset* ChargeUpArmsAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	UAnimationAsset* ChargeUpGunAnimation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "0 = will use ADS if player character allows, 1 = will use zoom if player character allows, 2 = will use ADS overriding variable in player character, 3 = will use zoom overriding variable in player character", ClampMin = 0, ClampMax = 3))
 	int UseADS;
@@ -1043,18 +1154,44 @@ protected:
 	UPROPERTY()
 	bool SwitchedFireToServer;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle CheckForOwnerTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle DespawnTimerHandle;
-	FTimerDelegate FireTimerDelegate;
-	FTimerDelegate SpawnProjectileTimerDelegate;
+	
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
+	FTimerHandle ChargeUpTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
+	FTimerHandle CancelChargeUpTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle SpawnProjectileTimerHandle;
+
+	FTimerDelegate SpawnProjectileTimerDelegate;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle FireTimerHandle;
+
+	FTimerDelegate FireTimerDelegate;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle FireFullAutoTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle BurstFireTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle CancelSmokeEffectTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle DestroySmokeEffectTimerHandle;
-	FTimerDelegate BulletHitModeTimerDelegate;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle BulletHitModeTimerHandle;
+
+	FTimerDelegate BulletHitModeTimerDelegate;
 
 public:
 	// Called every frame

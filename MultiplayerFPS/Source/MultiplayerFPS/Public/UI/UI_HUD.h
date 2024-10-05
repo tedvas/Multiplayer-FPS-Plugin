@@ -41,6 +41,9 @@ public:
 	FText GetReserveAmmoCaliberName();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	float GetWeaponChargeUp();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	float GetWeaponOverheat();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
@@ -48,6 +51,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	ESlateVisibility ReserveAmmoVisibility();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	ESlateVisibility ChargeUpVisibility();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	ESlateVisibility OverheatVisibility();

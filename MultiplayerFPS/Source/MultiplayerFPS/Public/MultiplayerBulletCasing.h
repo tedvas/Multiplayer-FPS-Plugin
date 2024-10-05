@@ -73,6 +73,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound", meta = (Tooltip = "If the casing is at or above this speed then the sound volume will be at max, but any lower than this it be quieter", ClampMin = 0.0f))
 	float HitSoundVolumeMinVelocity;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle DestroySelfTimerHandle;
 
 public:	

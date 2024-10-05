@@ -135,6 +135,32 @@ UMultiplayerHealthComponent* AMultiplayerCharacter::GetHealthComponent()
 	}
 }
 
+int AMultiplayerCharacter::GetHealth()
+{
+	if (GetHealthComponent())
+	{
+		return GetHealthComponent()->GetHealth();
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetHealthComponent Invalid MultiplayerCharacter.cpp:GetHealth");
+		return -1;
+	}
+}
+
+bool AMultiplayerCharacter::GetIsDead()
+{
+	if (GetHealthComponent())
+	{
+		return GetHealthComponent()->GetIsDead();
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetHealthComponent Invalid MultiplayerCharacter.cpp:GetIsDead");
+		return true;
+	}
+}
+
 USkeletalMeshComponent* AMultiplayerCharacter::GetPlayerModelMesh_Implementation()
 {
 	return GetMesh();
@@ -381,7 +407,7 @@ void AMultiplayerCharacter::Interact()
 {
 	if (GetHealthComponent())
 	{
-		if (CanInteract == true && GetHealthComponent()->GetHealth() > 0)
+		if (CanInteract == true && GetIsDead() == false)
 		{
 			FVector EyeLocation;
 			FRotator EyeRotation;
@@ -461,7 +487,7 @@ void AMultiplayerCharacter::Interact()
 
 void AMultiplayerCharacter::InteractReplicated(AInteractableItem* Interactable)
 {
-	if (CanInteract == true && Interactable && GetHealthComponent()->GetHealth() > 0)
+	if (CanInteract == true && Interactable && GetIsDead() == false)
 	{
 		if (AMultiplayerGun* GunCast = Cast<AMultiplayerGun>(Interactable))
 		{
@@ -715,7 +741,7 @@ void AMultiplayerCharacter::ApplyPerspectiveVisibility()
 
 		if (ArmsMesh)
 		{
-			if (HideFirstPersonArmsWithoutWeapon == true && GetAmountOfWeapons() <= 0)
+			if (HideFirstPersonArmsWithoutWeapon == true && GetHasWeapon() == false)
 			{
 				ArmsMesh->SetOwnerNoSee(true);
 			}
@@ -727,11 +753,11 @@ void AMultiplayerCharacter::ApplyPerspectiveVisibility()
 
 		if (FirstPersonPlayerModel)
 		{
-			if (FirstPersonPlayerModelMesh && GetAmountOfWeapons() > 0)
+			if (FirstPersonPlayerModelMesh && GetHasWeapon() == true)
 			{
 				FirstPersonPlayerModel->SetSkeletalMesh(FirstPersonPlayerModelMesh);
 			}
-			else if (FirstPersonPlayerModelWithoutWeapons && GetAmountOfWeapons() <= 0)
+			else if (FirstPersonPlayerModelWithoutWeapons && GetHasWeapon() == false)
 			{
 				FirstPersonPlayerModel->SetSkeletalMesh(FirstPersonPlayerModelWithoutWeapons);
 			}
@@ -1256,7 +1282,7 @@ int32 AMultiplayerCharacter::GetSharedCaliberAmount(int32 Index)
 
 AMultiplayerGun* AMultiplayerCharacter::GetWeapon(bool GetCurrentWeapon, int WeaponIndex)
 {
-	if (GetAmountOfWeapons() > 0)
+	if (GetHasWeapon() == true)
 	{
 		if (GetCurrentWeapon == true || WeaponIndex <= -1)
 		{
@@ -1287,9 +1313,21 @@ AMultiplayerGun* AMultiplayerCharacter::GetWeapon(bool GetCurrentWeapon, int Wea
 	}
 }
 
-int AMultiplayerCharacter::GetWeaponIndex(AMultiplayerGun* Weapon)
+bool AMultiplayerCharacter::GetHasWeapon()
 {
 	if (GetAmountOfWeapons() > 0)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+int AMultiplayerCharacter::GetWeaponIndex(AMultiplayerGun* Weapon)
+{
+	if (GetHasWeapon() == true)
 	{
 		if (AllWeapons.Contains(Weapon))
 		{
@@ -1344,7 +1382,7 @@ void AMultiplayerCharacter::SetWeaponVisibility(bool ApplyToAllWeapons, int Weap
 	{
 		AMultiplayerGun* WeaponToCheck = GetWeapon(false, WeaponVisibilityToChange);
 
-		if (GetAmountOfWeapons() > 0 && AllWeapons.Contains(WeaponToCheck) == true)
+		if (GetHasWeapon() == true && AllWeapons.Contains(WeaponToCheck) == true)
 		{
 			if (SetAllOtherWeaponsToOppositeVisibility == true)
 			{
@@ -1968,7 +2006,7 @@ void AMultiplayerCharacter::ServerSwitchWeapons_Implementation(int Index, AMulti
 
 void AMultiplayerCharacter::MulticastSwitchWeapons_Implementation(int Index, AMultiplayerGun* WeaponToSwitchTo)
 {
-	if (GetAmountOfWeapons() > 0)
+	if (GetHasWeapon() == true)
 	{
 		SetCanShoot(false);
 		SetCanAim(false);
@@ -2094,7 +2132,7 @@ void AMultiplayerCharacter::MulticastSwitchWeapons1_Implementation()
 {
 	IsSwitchingWeapons = false;
 
-	if (GetAmountOfWeapons() > 0)
+	if (GetHasWeapon() == true)
 	{
 		SetArmsAnimationMode();
 		SetPlayerModelAnimationMode();
@@ -2344,7 +2382,7 @@ void AMultiplayerCharacter::Fire()
 	ServerReplicateControlRotation(GetControlRotation());
 	MulticastReplicateControlRotation(GetControlRotation());
 	
-	if (GetAmountOfWeapons() > 0)
+	if (GetHasWeapon() == true)
 	{
 		if (GetCanShoot() == true)
 		{
@@ -2649,7 +2687,7 @@ void AMultiplayerCharacter::ServerReload_Implementation()
 
 void AMultiplayerCharacter::MulticastReload_Implementation()
 {
-	if (GetAmountOfWeapons() > 0 && CanReload == true && IsReloading == false)
+	if (GetHasWeapon() == true && CanReload == true && IsReloading == false)
 	{
 		if (AMultiplayerGun* Weapon = GetWeapon(true))
 		{
