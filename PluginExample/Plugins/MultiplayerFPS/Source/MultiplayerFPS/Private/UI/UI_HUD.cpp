@@ -191,6 +191,25 @@ FText UUI_HUD::GetReserveAmmoCaliberName()
 	}
 }
 
+float UUI_HUD::GetWeaponChargeUp()
+{
+	if (UIGetMultiplayerCharacter() && GetWorld())
+	{
+		if (AMultiplayerGun* Weapon = UIGetMultiplayerCharacter()->GetWeapon(true))
+		{
+			return Weapon->GetCurrentChargeUpProgress() / Weapon->GetChargeUpTime();
+		}
+		else
+		{
+			return 0.0f;
+		}
+	}
+	else
+	{
+		return 0.0f;
+	}
+}
+
 float UUI_HUD::GetWeaponOverheat()
 {
 	if (UIGetMultiplayerCharacter())
@@ -259,6 +278,32 @@ ESlateVisibility UUI_HUD::ReserveAmmoVisibility()
 	else
 	{
 		return ESlateVisibility::Visible;
+	}
+}
+
+ESlateVisibility UUI_HUD::ChargeUpVisibility()
+{
+	if (UIGetMultiplayerCharacter())
+	{
+		if (AMultiplayerGun* Weapon = UIGetMultiplayerCharacter()->GetWeapon(true))
+		{
+			if (Weapon->GetHasChargeUp() == true && Weapon->GetCurrentChargeUpProgress() > 0.0f)
+			{
+				return ESlateVisibility::Visible;
+			}
+			else
+			{
+				return ESlateVisibility::Collapsed;
+			}
+		}
+		else
+		{
+			return ESlateVisibility::Collapsed;
+		}
+	}
+	else
+	{
+		return ESlateVisibility::Collapsed;
 	}
 }
 

@@ -458,10 +458,15 @@ protected:
 	UPROPERTY(Replicated)
 	bool RegisteredHit;
 
-	FTimerDelegate BulletHitModeTimerDelegate;
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle BulletHitModeTimerHandle;
-	FTimerDelegate BeginPlayExplosionTimerDelegate;
+	
+	FTimerDelegate BulletHitModeTimerDelegate;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle BeginPlayDespawnTimerHandle;
+	
+	FTimerDelegate BeginPlayExplosionTimerDelegate;
 
 public:	
 	// Called every frame

@@ -110,6 +110,9 @@ AMultiplayerGun::AMultiplayerGun()
 	UseSharedCalibers = false;
 	CaliberToUse = 0;
 	InfiniteAmmo = 0;
+	HasChargeUp = false;
+	HoldTriggerDuringChargeUp = true;
+	ChargeUpTime = 1.0f;
 	DoesOverheat = false;
 	ProhibitFiringWhileCoolingDown = 0;
 	ReachedMaxHeat = false;
@@ -168,10 +171,16 @@ AMultiplayerGun::AMultiplayerGun()
 	SpawnFireSoundAttached = true;
 	SpawnFireSound2DForOwner = true;
 	SpawnFireSound2DForOwnerThirdPerson = true;
+	SpawnChargeUpSoundAttached = true;
+	SpawnChargeUpSound2DForOwner = true;
+	SpawnChargeUpSound2DForOwnerThirdPerson = true;
+	DestroyChargeUpSoundWhenChargeUpCanceled = true;
 	HitEffectScale = FVector(1.0f, 1.0f, 1.0f);
 	SpawnMuzzleFlashAttached = true;
 	ReplicateMuzzleFlashLocation = false;
 	UseFirstPersonRotationForThirdPersonMuzzleFlash = false;
+	SpawnChargeUpParticleAttached = true;
+	DestroyChargeUpParticleWhenChargeUpCanceled = true;
 	BulletWhizzingSoundVolumeBasedOnSpeed = true;
 	UseActorClassesForHitMarkers = 2;
 	UseFireArmsAnimation = 0;
@@ -239,13 +248,13 @@ void AMultiplayerGun::CheckForOwner()
 		{
 			if (GetOwningPlayerCast())
 			{
-				if (GetOwningPlayerCast()->GetHealthComponent()->GetHealth() >= 1)
+				if (GetOwningPlayerCast()->GetIsDead() == true)
 				{
-					GetDestroyed = false;
+					GetDestroyed = true;
 				}
 				else
 				{
-					GetDestroyed = true;
+					GetDestroyed = false;
 				}
 			}
 			else
@@ -634,65 +643,285 @@ void AMultiplayerGun::FireInput()
 				return;
 			}
 
-			if (IsShotgun == false || (IsShotgun == true && ShotgunAmountOfPelletsShot == 0))
+			if (HasChargeUp == true && ChargeUpTime > 0.0f)
 			{
-				if (FireMode == 0)
+				ChargeUp();
+			}
+			else
+			{
+				if (IsShotgun == false || (IsShotgun == true && ShotgunAmountOfPelletsShot == 0))
 				{
-					if (IsShotgun == true)
+					if (FireMode == 0)
 					{
-						ShotgunFire();
+						if (IsShotgun == true)
+						{
+							ShotgunFire();
+						}
+						else
+						{
+							Fire();
+						}
 					}
-					else
+					else if (FireMode == 1)
 					{
-						Fire();
+						if (IsShotgun == true)
+						{
+							ShotgunFire();
+
+							GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::ShotgunFire, FireRate, true, FireRate);
+						}
+						else
+						{
+							Fire();
+
+							GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::Fire, FireRate, true, FireRate);
+						}
+					}
+					else if (FireMode == 2 && AmountOfBurstShotsFired <= 0)
+					{
+						if (IsShotgun == true)
+						{
+							ShotgunFire();
+
+							GetWorldTimerManager().SetTimer(BurstFireTimerHandle, this, &AMultiplayerGun::ShotgunFire, FireRate, true, FireRate);
+						}
+						else
+						{
+							Fire();
+
+							GetWorldTimerManager().SetTimer(BurstFireTimerHandle, this, &AMultiplayerGun::Fire, FireRate, true, FireRate);
+						}
+					}
+					else if (FireMode == 3)
+					{
+						ContinuousFire();
 					}
 				}
-				else if (FireMode == 1)
+				else if (FireMode == 1 && CurrentHeat < MaxHeat - 1)
 				{
 					if (IsShotgun == true)
 					{
-						ShotgunFire();
-
 						GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::ShotgunFire, FireRate, true, FireRate);
 					}
 					else
 					{
-						Fire();
-
 						GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::Fire, FireRate, true, FireRate);
 					}
 				}
-				else if (FireMode == 2 && AmountOfBurstShotsFired <= 0)
-				{
-					if (IsShotgun == true)
-					{
-						ShotgunFire();
+			}
+		}
+	}
+}
 
-						GetWorldTimerManager().SetTimer(BurstFireTimerHandle, this, &AMultiplayerGun::ShotgunFire, FireRate, true, FireRate);
+void AMultiplayerGun::ChargeUp()
+{
+	if (HasChargeUp == true && ChargeUpTime > 0.0f)
+	{
+		if (GetCurrentChargeUpProgress() <= 0.0f)
+		{
+			if (ChargeUpSound)
+			{
+				if (SpawnChargeUpSoundAttached == true)
+				{
+					if (((SpawnChargeUpSound2DForOwner == true && GetOwningPlayerCast()->GetUsingThirdPerson() == false) || (SpawnChargeUpSound2DForOwnerThirdPerson == true && GetOwningPlayerCast()->GetUsingThirdPerson() == true)) && GetOwningPlayerCast()->IsLocallyControlled() == true)
+					{
+						SpawnedChargeUpSound = UGameplayStatics::SpawnSound2D(GetWorld(), ChargeUpSound);
 					}
 					else
 					{
-						Fire();
-
-						GetWorldTimerManager().SetTimer(BurstFireTimerHandle, this, &AMultiplayerGun::Fire, FireRate, true, FireRate);
+						if (GetOwningPlayerCast()->GetUsingThirdPerson() == true)
+						{
+							SpawnedChargeUpSound = UGameplayStatics::SpawnSoundAttached(ChargeUpSound, GetFireSceneToUse(), NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, ThirdPersonChargeUpSoundAttenuationOverride);
+						}
+						else
+						{
+							SpawnedChargeUpSound = UGameplayStatics::SpawnSoundAttached(ChargeUpSound, GetFireSceneToUse(), NAME_None, FVector(ForceInit), FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, false, 1, 1, 0, ChargeUpSoundAttenuationOverride);
+						}
 					}
-				}
-				else if (FireMode == 3)
-				{
-					ContinuousFire();
-				}
-			}
-			else if (FireMode == 1 && CurrentHeat < MaxHeat - 1)
-			{
-				if (IsShotgun == true)
-				{
-					GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::ShotgunFire, FireRate, true, FireRate);
 				}
 				else
 				{
-					GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::Fire, FireRate, true, FireRate);
+					if (((SpawnChargeUpSound2DForOwner == true && GetOwningPlayerCast()->GetUsingThirdPerson() == false) || (SpawnChargeUpSound2DForOwnerThirdPerson == true && GetOwningPlayerCast()->GetUsingThirdPerson() == true)) && GetOwningPlayerCast()->IsLocallyControlled() == true)
+					{
+						SpawnedChargeUpSound = UGameplayStatics::SpawnSound2D(GetWorld(), ChargeUpSound);
+					}
+					else
+					{
+						if (GetOwningPlayerCast()->GetUsingThirdPerson() == true)
+						{
+							UGameplayStatics::PlaySoundAtLocation(GetWorld(), ChargeUpSound, GetFireSceneToUse()->GetComponentLocation(), FRotator::ZeroRotator, 1, 1, 0, ThirdPersonChargeUpSoundAttenuationOverride);
+						}
+						else
+						{
+							UGameplayStatics::PlaySoundAtLocation(GetWorld(), ChargeUpSound, GetFireSceneToUse()->GetComponentLocation(), FRotator::ZeroRotator, 1, 1, 0, ChargeUpSoundAttenuationOverride);
+						}
+					}
 				}
 			}
+
+			if (ChargeUpParticleEffect)
+			{
+				if (SpawnChargeUpParticleAttached == true)
+				{
+					SpawnedChargeUpParticleEffect = UGameplayStatics::SpawnEmitterAttached(ChargeUpParticleEffect, GetFireSceneToUse());
+				}
+				else
+				{
+					SpawnedChargeUpParticleEffect = UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ChargeUpParticleEffect, GetFireSceneToUse()->GetComponentLocation());
+				}
+			}
+
+			if (ChargeUpArmsAnimationMontage)
+			{
+				if (UAnimInstance* ArmsAnimationInstance = GetOwningPlayerCast()->ArmsMesh->GetAnimInstance())
+				{
+					ArmsAnimationInstance->Montage_Play(ChargeUpArmsAnimationMontage);
+				}
+			}
+
+			if (ChargeUpArmsAnimation)
+			{
+				GetOwningPlayerCast()->ArmsMesh->PlayAnimation(ChargeUpArmsAnimation, false);
+				GetOwningPlayerCast()->SetArmsAnimationMode(ChargeUpArmsAnimation->GetPlayLength());
+			}
+
+			if (UseSkeletalMesh == true && GunSkeletalMesh && ChargeUpGunAnimation)
+			{
+				GunSkeletalMesh->PlayAnimation(ChargeUpGunAnimation, false);
+			}
+		}
+
+		ChargeUp_BP();
+
+		float TimeToChargeUp = ChargeUpTime;
+
+		if (GetWorldTimerManager().IsTimerActive(CancelChargeUpTimerHandle))
+		{
+			TimeToChargeUp -= GetWorldTimerManager().GetTimerRemaining(CancelChargeUpTimerHandle);
+			GetWorldTimerManager().ClearTimer(CancelChargeUpTimerHandle);
+		}
+
+		GetWorldTimerManager().SetTimer(ChargeUpTimerHandle, this, &AMultiplayerGun::ChargeUp1, TimeToChargeUp, false, TimeToChargeUp);
+	}
+}
+
+void AMultiplayerGun::ChargeUp1()
+{
+	if (SpawnedChargeUpParticleEffect)
+	{
+		SpawnedChargeUpParticleEffect->DestroyComponent();
+		SpawnedChargeUpParticleEffect = nullptr;
+	}
+
+	if (SpawnedChargeUpSound)
+	{
+		SpawnedChargeUpSound->Stop();
+		SpawnedChargeUpSound->VolumeMultiplier = 0.0f;
+		SpawnedChargeUpSound->DestroyComponent();
+
+		SpawnedChargeUpSound = nullptr;
+	}
+	
+	if ((IsShotgun == false || (IsShotgun == true && ShotgunAmountOfPelletsShot == 0)) && GetOwningPlayerCast())
+	{
+		if ((FireMode == 0 || GetOwningPlayerCast()->HoldingFireInput == false) && FireMode != 2)
+		{
+			SetCurrentChargeUpProgress(0.0f);
+			
+			if (IsShotgun == true)
+			{
+				ShotgunFire();
+			}
+			else
+			{
+				Fire();
+			}
+		}
+		else if (FireMode == 1)
+		{
+			if (IsShotgun == true)
+			{
+				ShotgunFire();
+
+				GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::ShotgunFire, FireRate, true, FireRate);
+			}
+			else
+			{
+				Fire();
+
+				GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::Fire, FireRate, true, FireRate);
+			}
+		}
+		else if ((FireMode == 2 || GetOwningPlayerCast()->HoldingFireInput == false) && AmountOfBurstShotsFired <= 0)
+		{
+			SetCurrentChargeUpProgress(0.0f);
+			
+			if (IsShotgun == true)
+			{
+				ShotgunFire();
+
+				GetWorldTimerManager().SetTimer(BurstFireTimerHandle, this, &AMultiplayerGun::ShotgunFire, FireRate, true, FireRate);
+			}
+			else
+			{
+				Fire();
+
+				GetWorldTimerManager().SetTimer(BurstFireTimerHandle, this, &AMultiplayerGun::Fire, FireRate, true, FireRate);
+			}
+		}
+		else if (FireMode == 3)
+		{
+			ContinuousFire();
+		}
+	}
+	else if (FireMode == 1 && CurrentHeat < MaxHeat - 1)
+	{
+		if (IsShotgun == true)
+		{
+			GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::ShotgunFire, FireRate, true, FireRate);
+		}
+		else
+		{
+			GetWorldTimerManager().SetTimer(FireFullAutoTimerHandle, this, &AMultiplayerGun::Fire, FireRate, true, FireRate);
+		}
+	}
+}
+
+void AMultiplayerGun::CancelChargeUp()
+{
+	if (GetWorldTimerManager().IsTimerActive(ChargeUpTimerHandle))
+	{
+		CancelChargeUp_BP();
+
+		float TimeToCancelChargeUp = ChargeUpTime - GetWorldTimerManager().GetTimerRemaining(ChargeUpTimerHandle);
+		GetWorldTimerManager().ClearTimer(ChargeUpTimerHandle);
+
+		GetWorldTimerManager().SetTimer(CancelChargeUpTimerHandle, this, &AMultiplayerGun::CancelChargeUp1, TimeToCancelChargeUp, false, TimeToCancelChargeUp);
+	}
+}
+
+void AMultiplayerGun::CancelChargeUp1()
+{
+	GetWorldTimerManager().ClearTimer(CancelChargeUpTimerHandle);
+
+	if (DestroyChargeUpParticleWhenChargeUpCanceled == true)
+	{
+		if (SpawnedChargeUpParticleEffect)
+		{
+			SpawnedChargeUpParticleEffect->DestroyComponent();
+			SpawnedChargeUpParticleEffect = nullptr;
+		}
+	}
+
+	if (DestroyChargeUpSoundWhenChargeUpCanceled == true)
+	{
+		if (SpawnedChargeUpSound)
+		{
+			SpawnedChargeUpSound->Stop();
+			SpawnedChargeUpSound->VolumeMultiplier = 0.0f;
+			SpawnedChargeUpSound->DestroyComponent();
+
+			SpawnedChargeUpSound = nullptr;
 		}
 	}
 }
@@ -971,7 +1200,7 @@ void AMultiplayerGun::Fire()
 									{
 										if (EnemyCast->GetHealthComponent())
 										{
-											if (EnemyCast->GetHealthComponent()->GetHealth() > 0)
+											if (EnemyCast->GetIsDead() == false)
 											{
 												if (UseActorClassesForHitMarkers == 0 && HitActor)
 												{
@@ -1159,7 +1388,7 @@ void AMultiplayerGun::Fire()
 													{
 														if (EnemyCast->GetHealthComponent())
 														{
-															if (EnemyCast->GetHealthComponent()->GetHealth() > 0)
+															if (EnemyCast->GetIsDead() == false)
 															{
 																if (ExplosiveHitActor)
 																{
@@ -1366,7 +1595,7 @@ void AMultiplayerGun::Fire()
 												{
 													if (EnemyCast->GetHealthComponent())
 													{
-														if (EnemyCast->GetHealthComponent()->GetHealth() > 0)
+														if (EnemyCast->GetIsDead() == false)
 														{
 															if (UseActorClassesForHitMarkers == 0 && Actor)
 															{
@@ -2099,6 +2328,16 @@ void AMultiplayerGun::StopFiring(bool EvenCancelBurst)
 		ServerStopFiring();
 	}
 
+	if (HoldTriggerDuringChargeUp == true)
+	{
+		CancelChargeUp();
+	}
+
+	if (GetCurrentChargeUpProgress() >= GetChargeUpTime())
+	{
+		SetCurrentChargeUpProgress(0.0f);
+	}
+
 	GetWorldTimerManager().ClearTimer(FireFullAutoTimerHandle);
 
 	if (AmountOfTimeToCancelSmoke > 0)
@@ -2482,6 +2721,69 @@ int AMultiplayerGun::GetReserveAmmo()
 int AMultiplayerGun::GetMaxReserveAmmo()
 {
 	return MaxReserveAmmo;
+}
+
+void AMultiplayerGun::SetHasChargeUp(bool NewHasChargeUp)
+{
+	HasChargeUp = NewHasChargeUp;
+}
+
+bool AMultiplayerGun::GetHasChargeUp()
+{
+	return HasChargeUp;
+}
+
+void AMultiplayerGun::SetHoldTriggerDuringChargeUp(bool NewHoldTriggerDuringChargeUp)
+{
+	HoldTriggerDuringChargeUp = NewHoldTriggerDuringChargeUp;
+}
+
+bool AMultiplayerGun::GetHoldTriggerDuringChargeUp()
+{
+	return HoldTriggerDuringChargeUp;
+}
+
+void AMultiplayerGun::SetChargeUpTime(float NewChargeUpTime)
+{
+	ChargeUpTime = NewChargeUpTime;
+}
+
+float AMultiplayerGun::GetChargeUpTime()
+{
+	return ChargeUpTime;
+}
+
+void AMultiplayerGun::SetCurrentChargeUpProgress(float NewCurrentChargeUpProgress)
+{
+	CurrentChargeUpProgress = NewCurrentChargeUpProgress;
+	SetChargeUpProgressTimeForTimeline(NewCurrentChargeUpProgress / GetChargeUpTime());
+}
+
+float AMultiplayerGun::GetCurrentChargeUpProgress()
+{
+	return CurrentChargeUpProgress;
+}
+
+float AMultiplayerGun::GetChargeUpTimeRemaining()
+{
+	if (GetWorldTimerManager().IsTimerActive(ChargeUpTimerHandle))
+	{
+		return GetWorldTimerManager().GetTimerRemaining(ChargeUpTimerHandle);
+	}
+	else
+	{
+		return 0.0f;
+	}
+}
+
+UAnimMontage* AMultiplayerGun::GetChargeUpArmsAnimationMontage()
+{
+	return ChargeUpArmsAnimationMontage;
+}
+
+UAnimationAsset* AMultiplayerGun::GetChargeUpArmsAnimation()
+{
+	return ChargeUpArmsAnimationMontage;
 }
 
 bool AMultiplayerGun::GetDoesOverheat()
