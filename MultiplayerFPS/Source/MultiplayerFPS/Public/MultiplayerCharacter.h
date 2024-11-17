@@ -53,7 +53,10 @@ class MULTIPLAYERFPS_API AMultiplayerCharacter : public ACharacter
 	UInputAction* IA_Reload;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
-	UInputAction* IA_SwitchWeapons;
+	UInputAction* IA_NextWeapon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
+	UInputAction* IA_PreviousWeapon;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
 	UInputAction* IA_GamepadSwitchWeapons;
@@ -69,6 +72,12 @@ class MULTIPLAYERFPS_API AMultiplayerCharacter : public ACharacter
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
 	UInputAction* IA_SwitchToWeapon2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
+	UInputAction* IA_ToggleWeaponHolstered;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"), Category = "Input")
+	UInputAction* IA_Sprint;
 
 public:
 	// Sets default values for this character's properties
@@ -142,11 +151,54 @@ public:
 
 	virtual void RecalculateBaseEyeHeight() override;
 	virtual void Move(const FInputActionValue& Value);
+	virtual void ReleaseMove(const FInputActionValue& Value);
 	virtual void Look(const FInputActionValue& Value);
 	virtual void GamepadLook(const FInputActionValue& Value);
 	virtual void PressJump();
 	virtual void HoldJump();
 	virtual void ReleaseJump();
+
+	UPROPERTY()
+	FVector2D MovementVector;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Variables")
+	bool HoldingMoveInput;
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetMovementSpeedBasedOnSettings();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void SetMovementSpeedBasedOnSettings_BP(float NewSpeed);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SprintInput();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ReleaseSprintInput();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void Sprint();
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void ServerSprint();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void PlaySprintAnimation();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "Only set IsInAir to true if that is the reason the player stopped sprinting, not if they also happen to be in the air"))
+	virtual void StopSprinting(bool SkipAnimation = false, bool IsInAir = false);
+
+	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
+	virtual void ServerStopSprinting(bool SkipAnimation = false);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void StopSprinting1();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool CheckIfCanSprint();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void CheckIfCanSprintNoReturn();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetSensitivity();
@@ -156,6 +208,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void Interact();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions", meta = (Tooltip = "This executes after the C++ function"))
+	void Interact_BP();
 
 	UFUNCTION(Category = "Functions")
 	virtual void InteractReplicated(AInteractableItem* Interactable);
@@ -377,9 +432,6 @@ public:
 	virtual void RemoveWeaponPastIndex(int WeaponIndex, bool DestroyWeapon = false);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
-	virtual void SwitchWeaponsInput(const FInputActionValue& Value);
-
-	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SwitchWeapons(int Index, AMultiplayerGun* WeaponToSwitchTo = nullptr);
 
 	UFUNCTION(Server, Reliable, Category = "Functions")
@@ -431,7 +483,61 @@ public:
 	virtual void Fire();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
-	virtual void StopFiring(bool EvenCancelBurst = false);
+	virtual void StopFiring(bool EvenCancelBurst = false, bool ReturnToPreviousAnimation = false);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetIsFiring(bool NewIsFiring);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual bool GetIsFiring();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void ToggleWeaponHolstered();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void HolsterWeapons();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerHolsterWeapons();
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastHolsterWeapons();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void HolsterWeapons1();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerHolsterWeapons1();
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastHolsterWeapons1();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions", meta = (Tooltip = "This executes after the C++ function"))
+	void HolsterWeapon_BP();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void UnHolsterWeapons();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerUnHolsterWeapons();
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastUnHolsterWeapons();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void UnHolsterWeapons1();
+
+	UFUNCTION(Server, Reliable, Category = "Functions")
+	virtual void ServerUnHolsterWeapons1();
+
+	UFUNCTION(NetMulticast, Reliable, Category = "Functions")
+	virtual void MulticastUnHolsterWeapons1();
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions", meta = (Tooltip = "This executes after the C++ function"))
+	void UnHolsterWeapon_BP();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetIsWeaponHolstered();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void AimInput();
@@ -460,34 +566,37 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void SetAimingFOV_BP(bool Aiming, float AimingFOV, float TimeToAim);
 
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void SetAimingArmsPosition_BP(FVector ArmsNormalLocation, FRotator ArmsNormalRotation, FVector ArmsAimLocation, FRotator ArmsAimRotation, bool Aiming, float TimeToAim);
+
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetCanAim(bool NewCanAim);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetCanAim();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetIsAiming(bool NewIsAiming);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetIsAiming();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetIsADSing(bool NewIsADSing);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetIsADSing();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetIsZoomedIn(bool NewIsZoomedIn);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual bool GetIsZoomedIn();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetUseADS(int NewUseADS);
 
-	UFUNCTION(BlueprintCallable, Category = "Functions")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetUseADS();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
@@ -542,12 +651,15 @@ public:
 	virtual void SetArmsAnimationMode1();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "Set delay to 0 to not use it"))
+	virtual void PlayArmsAnimation(UAnimationAsset* Animation, bool Looping = false);
+
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "Set delay to 0 to not use it"))
 	virtual void SetPlayerModelAnimationMode(float Delay = 0.0f);
 
 	UFUNCTION(Category = "Functions")
 	virtual void SetPlayerModelAnimationMode1();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (ClampMin = 0.0f, Tooltip = "Set this variable in the player controller, not here"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Settings", meta = (ClampMin = 0.0f, Tooltip = "Set this variable in the player controller, not here"))
 	float FieldOfView;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Mouse sensitivity on the X axis when not aiming, set this variable in the player controller, not here"))
@@ -577,17 +689,65 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Gamepad sensitivity on the Y axis when aiming, only applies if UseAimSensitivityMultipler is false, set this variable in the player controller, not here"))
 	float GamepadAimingSensitivityY;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Set this variable in the player controller, not here"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Set this variable in the player controller, not here"))
 	float GamepadAimingSensitivityMultiplier;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Set this variable in the player controller, not here"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Set this variable in the player controller, not here"))
 	bool UseAimSensitivityMultipler;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Set this variable in the player controller, not here"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Set this variable in the player controller, not here"))
 	bool ToggleAim;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Set this variable in the player controller, not here"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "Set this variable in the player controller, not here"))
 	bool HoldButtonToJump;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float DefaultMovementSpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float SprintingMovementSpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (Tooltip = "If false this will completely remove weapon speed penalties while the weapon is holstered"))
+	bool ApplySpeedPenaltyIfWeaponsHolstered;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (Tooltip = "This is for specific situations, for example the player gets stunned and can't sprint, if you don't want the player to be able to sprint even after respawns or just at all it would be better to set the CanSprint variable in the player controller"))
+	bool CanSprint;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Movement", meta = (Tooltip = "0 = Hold to sprint, 1 = Tap to go to sprint (tapping again will not stop sprinting), 2 = Tap to sprint and tap again to stop sprinting, set this in the player controller", ClampMin = 0, ClampMax = 2))
+	int ToggleSprint;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Variables")
+	bool HoldingSprintInput;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	bool SprintCancelsReload;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	bool FiringCancelsSprint;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	bool AimingCancelsSprint;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (Tooltip = "0 = no, 1 = will holster when sprinting and un holster when un sprinting, 2 = yes and keep holstered", ClampMin = 0, ClampMax = 2))
+	int ShouldHolsterWeaponsWhenSprinting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	bool CanOnlySprintWhileMovingForward;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (Tooltip = "This only applies to controller", ClampMin = 0.0, ClampMax = 1.0))
+	FVector2D MinInputToSprint;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float MinSpeedToStartSprinting;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Movement")
+	bool IsSprinting;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Movement")
+	bool ShouldGoBackToSprinting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (Tooltip = "This is the time it will take to return to the sprint animation after firing, this only applies if FiringCancelsSprint = false", ClampMin = 0.0f))
+	float TimeToPlaySprintAnimationAfterFire;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Hit Effects")
 	int UseActorClassesForHitMarkers;
@@ -634,6 +794,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Replicated, Category = "Perspective", meta = (Tooltip = "Set this to true if you want third person to be default, set this in the player controller"))
 	bool UsingThirdPerson;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Perspective")
+	bool IsSwitchingPerspective;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Perspective", meta = (Tooltip = "Set this to true to default it to the left shoulder, set this in the player controller"))
 	bool UsingThirdPersonLeftShoulder;
@@ -740,6 +903,15 @@ public:
 
 protected:
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
+	bool ReturnToPreviousAnimationAfterFiring;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
+	bool ResetArmsAnimationWhenFiring;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
+	bool IsFiring;
+	
 	UPROPERTY(BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "This is only used for the default animation blueprint"))
 	bool HoldingJumpInput;
 
@@ -752,8 +924,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
 	bool AimingCancelsReload;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
+	bool HolsteringWeaponCancelsReload;
+
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	bool IsAiming;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Variables")
+	bool IsZoomingForAim;
 
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	bool IsADSing;
@@ -761,8 +939,59 @@ protected:
 	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
 	bool IsZoomedIn;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
+	bool CanHolsterWeapons;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
+	bool CanUnHolsterWeapons;
+
+	UPROPERTY(BlueprintReadWrite, Replicated, Category = "Variables")
+	bool IsWeaponHolstered;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
+	bool CanShootToUnHolsterWeapon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
+	bool CanAimToUnHolsterWeapon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "-1 to wait for first person animation to finish, -2 to wait for third person animation to finish, -3 to wait for animation from current player perspective to finish for example if the player is in first person it will wait for the first person animation, 0 = instant", ClampMin = -3.0f))
+	float TimeToHolsterWeapon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "-1 to wait for first person animation to finish, -2 to wait for third person animation to finish, -3 to wait for animation from current player perspective to finish for example if the player is in first person it will wait for the first person animation, 0 = instant", ClampMin = -3.0f))
+	float TimeToUnHolsterWeapon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "-1 to wait for first person animation to finish, -2 to wait for third person animation to finish, -3 to wait for animation from current player perspective to finish for example if the player is in first person it will wait for the first person animation, 0 = instant", ClampMin = -3.0f))
+	float TimeToUnHolsterWeaponWhenFiring;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "-1 to wait for first person animation to finish, -2 to wait for third person animation to finish, -3 to wait for animation from current player perspective to finish for example if the player is in first person it will wait for the first person animation, 0 = instant", ClampMin = -3.0f))
+	float TimeToUnHolsterWeaponWhenAiming;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Weapons", meta = (Tooltip = "0 = determined by weapon, 1 = ADS with all weapons, 2 = zoom in with all weapons", ClampMin = 0, ClampMax = 2))
 	int UseADS;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "0 = X (Roll), 1 = Y (Pitch), 2 = Z (Yaw), This will depend on your model but for the default arms 2 is correct, It has to be perfectly along an axis", ClampMin = 0.0f, ClampMax = 2.0f))
+	int ArmsHorizontalRotaitonAxis;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "0 = X, 1 = Y, 2 = Z, This will depend on your model but for the default arms 1 is correct, It has to be perfectly along an axis", ClampMin = 0.0f, ClampMax = 2.0f))
+	int ArmsHorizontalLocationAxis;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "0 = X (Roll), 1 = Y (Pitch), 2 = Z (Yaw), This will depend on your model but for the default arms 1 is correct, It has to be perfectly along an axis", ClampMin = 0.0f, ClampMax = 2.0f))
+	int ArmsVerticalRotationAxis;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "0 = X, 1 = Y, 2 = Z, This will depend on your model but for the default arms 2 is correct, It has to be perfectly along an axis", ClampMin = 0.0f, ClampMax = 2.0f))
+	int ArmsVerticalLocationAxis;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "This will not affect whether or not the arms move back to their original position, just whether or not they sway"))
+	bool CanHaveWeaponSway;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "This will not affect whether or not the arms sway, just whether or not they move back to their original position"))
+	bool CanResetArmsPositionForWeaponSway;
+
+	UPROPERTY()
+	FVector ArmsDefaultLocation;
+
+	UPROPERTY()
+	FRotator ArmsDefaultRotation;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Variables")
 	bool IsSwitchingWeapons;
@@ -793,7 +1022,7 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (ClampMin = 0.0f))
 	float DelayToDestroyBody;
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons")
 	bool CanReload;
 
@@ -849,6 +1078,18 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, Category = "Timers")
 	FTimerHandle PlayerModelAnimationModeTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
+	FTimerHandle HolsterWeaponsTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
+	FTimerHandle SprintTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
+	FTimerHandle GoBackToSprintTimerHandle;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
+	FTimerHandle CheckIfCanSprintTimerHandle;
 
 public:
 	// Called every frame
