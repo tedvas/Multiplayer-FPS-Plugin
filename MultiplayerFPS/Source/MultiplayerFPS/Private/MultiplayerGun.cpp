@@ -1,5 +1,4 @@
 // Fill out your copyright notice in the Description page of Project Settings.
-// the reason you'll see weird parenthesis on if statements is for linux compatibility
 
 #include "MultiplayerGun.h"
 #include "Net/UnrealNetwork.h"
@@ -81,6 +80,10 @@ AMultiplayerGun::AMultiplayerGun()
 	DamageBoxCollision->SetupAttachment(FireBoxScene, NAME_None);
 	DamageBoxCollision->SetIsReplicated(true);
 
+	ShouldDivideMovementSpeedPenalty = true;
+	ShouldDivideSprintSpeedPenalty = true;
+	MovementSpeedPenalty = 1.1f;
+	SprintSpeedPenalty = 1.15f;
 	CanShoot = true;
 	FireMode = 0;
 	UseBoxCollisionForDamage = false;
@@ -121,6 +124,19 @@ AMultiplayerGun::AMultiplayerGun()
 	MaxHeat = 50.0f;
 	CurrentHeat = 0.0f;
 	IsOverheating = false;
+	MinLookInputForWeaponSway = 0.3f;
+	ShouldHaveHorizontalWeaponSway = true;
+	ShouldHaveVerticalWeaponSway = true;
+	UseRotationForHorizontalWeaponSway = 0;
+	HorizontalWeaponSwayOppositeDirection = false;
+	MaxHorzontalWeaponSwayRotation = 0.75f;
+	MaxHorzontalWeaponSwayDistance = 1.0f;
+	UseRotationForVerticalWeaponSway = 2;
+	VerticalWeaponSwayOppositeDirection = true;
+	MaxVerticalWeaponSwayRotation = 0.75f;
+	MaxVerticalWeaponSwayDistance = 1.0f;
+	HorizontalWeaponSwaySpeed = 10.0f;
+	VerticalWeaponSwaySpeed = 10.0f;
 	BulletCasingSpawnCollisionHandlingMethod = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	BulletCasingInheritsVelocity = true;
 	MaxAmountOfBulletCasings = 30;
@@ -212,6 +228,16 @@ AMultiplayerGun::AMultiplayerGun()
 	CrumbleDestructibleMeshesWithEveryShotgunPellet = false;
 	DestructionSphereSize = FVector(0.25f, 0.25f, 0.25f);
 	SwitchedFireToServer = false;
+	ResetArmsAnimationAfterWeaponSwitch = true;
+	ResetArmsAnimationAfterHolster = false;
+	ResetArmsAnimationAfterUnHolster = true;
+	ResetArmsAnimationAfterReload = true;
+	ResetArmsAnimationAfterCanceledReload = true;
+	LoopSprintAnimation = false;
+	LoopThirdPersonSprintAnimation = false;
+	SetSprintingSpeedAfterAnimation = false;
+	SetDefaultSpeedAfterAnimation = false;
+	ResetArmsAnimationAfterUnSprinting = true;
 }
 
 UPrimitiveComponent* AMultiplayerGun::GetGunMesh()
@@ -1027,6 +1053,11 @@ void AMultiplayerGun::Fire()
 		{
 			if (CanShoot == true || FireMode == 1 || FireMode == 2 || IsShotgun == true)
 			{
+				if (GetOwningPlayerCast())
+				{
+					GetOwningPlayerCast()->SetIsFiring(true);
+				}
+				
 				GetWorldTimerManager().ClearTimer(DestroySmokeEffectTimerHandle);
 				GetWorldTimerManager().ClearTimer(CancelSmokeEffectTimerHandle);
 
@@ -1748,7 +1779,7 @@ void AMultiplayerGun::Fire()
 				GetWorldTimerManager().SetTimer(FireTimerHandle, FireTimerDelegate, FireRate, false, FireRate);
 			}
 		}
-		else if (CurrentHeat >= MaxHeat)
+		else if ((CurrentHeat >= MaxHeat && DoesOverheat == true) || (AmmoInMagazine <= 0 && DoesOverheat == false))
 		{
 			StopFiring();
 		}
@@ -2119,7 +2150,7 @@ void AMultiplayerGun::OnRep_GunHitEffects()
 			UGameplayStatics::SpawnForceFeedbackAtLocation(GetWorld(), BulletHitControllerVibration, GunHitEffectsReplication.HitLocation, FRotator::ZeroRotator, false, 1.0f, 0.0f, BulletHitControllerVibrationAttenuation);
 		}
 
-		if (MuzzleFlash && GetFireSceneToUse())
+		if (MuzzleFlash && GetFireSceneToUse() && FireMode != 3)
 		{
 			if (SpawnMuzzleFlashAttached == true)
 			{
@@ -2328,6 +2359,11 @@ void AMultiplayerGun::StopFiring(bool EvenCancelBurst)
 		ServerStopFiring();
 	}
 
+	if (GetOwningPlayerCast())
+	{
+		GetOwningPlayerCast()->SetIsFiring(false);
+	}
+
 	if (HoldTriggerDuringChargeUp == true)
 	{
 		CancelChargeUp();
@@ -2405,10 +2441,9 @@ void AMultiplayerGun::CancelSmokeEffect()
 	BulletsShotForSmokeEffect = 0;
 }
 
-void AMultiplayerGun::ApplyPerspective(bool ThirdPerson)
+void AMultiplayerGun::ApplyPerspective(bool ThirdPerson, bool IsWeaponHolstered)
 {
 	SetUsingThirdPerson(ThirdPerson);
-
 	ApplyPerspective_BP(ThirdPerson);
 
 	if (ThirdPerson == true)
@@ -2447,7 +2482,14 @@ void AMultiplayerGun::ApplyPerspective(bool ThirdPerson)
 						{
 							if (UPrimitiveComponent* ComponentCast = Cast<UPrimitiveComponent>(Component))
 							{
-								ComponentCast->SetOwnerNoSee(false);
+								if (IsWeaponHolstered == false)
+								{
+									ComponentCast->SetOwnerNoSee(false);
+								}
+								else
+								{
+									ComponentCast->SetOwnerNoSee(true);
+								}
 							}
 						}
 					}
@@ -2457,22 +2499,36 @@ void AMultiplayerGun::ApplyPerspective(bool ThirdPerson)
 
 		if (GetThirdPersonGunMesh())
 		{
-			GetThirdPersonGunMesh()->SetOwnerNoSee(false);
+			if (IsWeaponHolstered == false)
+			{
+				GetThirdPersonGunMesh()->SetOwnerNoSee(false);
+			}
+			else
+			{
+				GetThirdPersonGunMesh()->SetOwnerNoSee(true);
+			}
 		}
 	}
 	else
 	{
 		if (GetGunMesh())
 		{
-			if (GetOwningPlayerCast())
+			if (IsWeaponHolstered == false)
 			{
-				GetGunMesh()->SetOwnerNoSee(GetOwningPlayerCast()->HideFirstPersonArmsAndGunInFirstPerson);
+				if (GetOwningPlayerCast())
+				{
+					GetGunMesh()->SetOwnerNoSee(GetOwningPlayerCast()->HideFirstPersonArmsAndGunInFirstPerson);
+				}
+				else
+				{
+					GetGunMesh()->SetOwnerNoSee(false);
+
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 1 MultiplayerGun.cpp:ApplyPerspective");
+				}
 			}
 			else
 			{
-				GetGunMesh()->SetOwnerNoSee(false);
-
-				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 1 MultiplayerGun.cpp:ApplyPerspective");
+				GetGunMesh()->SetOwnerNoSee(true);
 			}
 
 			if (GetThirdPersonGunMesh())
@@ -2491,15 +2547,22 @@ void AMultiplayerGun::ApplyPerspective(bool ThirdPerson)
 						{
 							if (UPrimitiveComponent* ComponentCast = Cast<UPrimitiveComponent>(Component))
 							{
-								if (GetOwningPlayerCast())
+								if (IsWeaponHolstered == false)
 								{
-									ComponentCast->SetOwnerNoSee(GetOwningPlayerCast()->HideFirstPersonArmsAndGunInFirstPerson);
+									if (GetOwningPlayerCast())
+									{
+										ComponentCast->SetOwnerNoSee(GetOwningPlayerCast()->HideFirstPersonArmsAndGunInFirstPerson);
+									}
+									else
+									{
+										ComponentCast->SetOwnerNoSee(false);
+
+										GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 2 MultiplayerGun.cpp:ApplyPerspective");
+									}
 								}
 								else
 								{
-									ComponentCast->SetOwnerNoSee(false);
-
-									GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 2 MultiplayerGun.cpp:ApplyPerspective");
+									ComponentCast->SetOwnerNoSee(true);
 								}
 							}
 						}
@@ -2514,15 +2577,22 @@ void AMultiplayerGun::ApplyPerspective(bool ThirdPerson)
 						{
 							if (UPrimitiveComponent* ComponentCast = Cast<UPrimitiveComponent>(Component))
 							{
-								if (GetOwningPlayerCast())
+								if (IsWeaponHolstered == false)
 								{
-									ComponentCast->SetOwnerNoSee(GetOwningPlayerCast()->HideThirdPersonGunInFirstPerson);
+									if (GetOwningPlayerCast())
+									{
+										ComponentCast->SetOwnerNoSee(GetOwningPlayerCast()->HideThirdPersonGunInFirstPerson);
+									}
+									else
+									{
+										ComponentCast->SetOwnerNoSee(true);
+
+										GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 3 MultiplayerGun.cpp:ApplyPerspective");
+									}
 								}
 								else
 								{
 									ComponentCast->SetOwnerNoSee(true);
-
-									GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 3 MultiplayerGun.cpp:ApplyPerspective");
 								}
 							}
 						}
@@ -2533,15 +2603,22 @@ void AMultiplayerGun::ApplyPerspective(bool ThirdPerson)
 
 		if (GetThirdPersonGunMesh())
 		{
-			if (GetOwningPlayerCast())
+			if (IsWeaponHolstered == false)
 			{
-				GetThirdPersonGunMesh()->SetOwnerNoSee(GetOwningPlayerCast()->HideThirdPersonGunInFirstPerson);
+				if (GetOwningPlayerCast())
+				{
+					GetThirdPersonGunMesh()->SetOwnerNoSee(GetOwningPlayerCast()->HideThirdPersonGunInFirstPerson);
+				}
+				else
+				{
+					GetThirdPersonGunMesh()->SetOwnerNoSee(true);
+				
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 4 MultiplayerGun.cpp:ApplyPerspective");
+				}
 			}
 			else
 			{
 				GetThirdPersonGunMesh()->SetOwnerNoSee(true);
-				
-				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid 4 MultiplayerGun.cpp:ApplyPerspective");
 			}
 		}
 	}
@@ -2867,6 +2944,39 @@ int AMultiplayerGun::GetSharedCaliberAmount()
 	}
 
 	return CaliberAmount;
+}
+
+void AMultiplayerGun::HolsterWeapon(bool IsHolstering)
+{
+	HolsterWeapon_BP();
+	
+	if (GunSkeletalMesh && UseSkeletalMesh == true)
+	{
+		if (IsHolstering == true)
+		{
+			if (HolsterWeaponGunAnimation)
+			{
+				GunSkeletalMesh->PlayAnimation(HolsterWeaponGunAnimation, false);
+			}
+
+			if (HolsterWeaponGunAnimationMontage && GunSkeletalMesh->GetAnimInstance())
+			{
+				GunSkeletalMesh->GetAnimInstance()->Montage_Play(HolsterWeaponAnimationMontage);
+			}
+		}
+		else
+		{
+			if (UnHolsterWeaponGunAnimation)
+			{
+				GunSkeletalMesh->PlayAnimation(UnHolsterWeaponGunAnimation, false);
+			}
+
+			if (UnHolsterWeaponGunAnimationMontage && GunSkeletalMesh->GetAnimInstance())
+			{
+				GunSkeletalMesh->GetAnimInstance()->Montage_Play(UnHolsterWeaponAnimationMontage);
+			}
+		}
+	}
 }
 
 void AMultiplayerGun::Reload()
