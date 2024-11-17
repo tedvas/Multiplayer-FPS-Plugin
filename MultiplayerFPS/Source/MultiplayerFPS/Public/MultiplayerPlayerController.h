@@ -246,6 +246,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings")
 	bool HoldButtonToJump;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "This is a global setting that will apply to the player even after respawns, the CanSprint variable in the MultiplayerCharacter is for specific situations, for example the player gets stunned and can't sprint, you would set that in the character"))
+	bool CanSprint;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", meta = (Tooltip = "0 = Hold to sprint, 1 = Tap to go to sprint (tapping again will not stop sprinting), 2 = Tap to sprint and tap again to stop sprinting", ClampMin = 0, ClampMax = 2))
+	int ToggleSprint;
 
 protected:
 

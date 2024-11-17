@@ -25,6 +25,8 @@ AMultiplayerPlayerController::AMultiplayerPlayerController()
 	ControllerVibration = true;
 	ToggleAim = false;
 	HoldButtonToJump = false;
+	CanSprint = true;
+	ToggleSprint = 1;
 	UseAimSensitivityMultipler = true;
 
 	PlayerIndex = 0;
@@ -383,6 +385,7 @@ void AMultiplayerPlayerController::ApplySettingsToCharacter()
 			PlayerCast->ToggleAim = ToggleAim;
 			PlayerCast->HoldButtonToJump = HoldButtonToJump;
 			PlayerCast->UseAimSensitivityMultipler = UseAimSensitivityMultipler;
+			PlayerCast->ToggleSprint = ToggleSprint;
 			PlayerCast->ApplySettings();
 		}
 		else
@@ -471,7 +474,7 @@ void AMultiplayerPlayerController::Respawn1()
 		{
 			int ChosenIndex;
 			FVector Location;
-			FRotator Rotation;
+			FRotator Rotation(0, 0, 0);
 			bool SetRotation = true;
 
 			ChosenIndex = FMath::RandRange(0, SpawnLocations.Num() - 1);
