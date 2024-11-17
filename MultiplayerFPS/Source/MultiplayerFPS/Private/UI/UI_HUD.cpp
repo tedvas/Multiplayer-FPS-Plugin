@@ -81,7 +81,7 @@ ESlateVisibility UUI_HUD::VisibleIfHasWeapon()
 
 	if (UIGetMultiplayerCharacter())
 	{
-		if (UIGetMultiplayerCharacter()->GetAmountOfWeapons() >= 1)
+		if (UIGetMultiplayerCharacter()->GetHasWeapon() == true)
 		{
 			NewVisibility = ESlateVisibility::Visible;
 		}
@@ -365,7 +365,7 @@ ESlateVisibility UUI_HUD::CrosshairVisibility()
 
 	if (UIGetMultiplayerCharacter())
 	{
-		if (UIGetMultiplayerCharacter()->GetAmountOfWeapons() >= 1 && (UIGetMultiplayerCharacter()->GetIsADSing() == false || UIGetMultiplayerCharacter()->GetUsingThirdPerson() == true))
+		if (UIGetMultiplayerCharacter()->GetHasWeapon() == true && UIGetMultiplayerCharacter()->GetIsWeaponHolstered() == false && (UIGetMultiplayerCharacter()->GetIsADSing() == false || UIGetMultiplayerCharacter()->GetUsingThirdPerson() == true))
 		{
 			NewVisibility = ESlateVisibility::Visible;
 		}

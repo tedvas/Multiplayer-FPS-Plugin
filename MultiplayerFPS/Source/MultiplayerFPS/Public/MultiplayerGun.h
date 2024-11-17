@@ -246,7 +246,7 @@ public:
 	void DestroySmokeEffect_BP();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "Do not call this function, this is used in the character SetUsingThirdPerson funtion"))
-	virtual void ApplyPerspective(bool ThirdPerson);
+	virtual void ApplyPerspective(bool ThirdPerson, bool IsWeaponHolstered = false);
 
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void ApplyPerspective_BP(bool ThirdPerson);
@@ -419,6 +419,12 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual int GetSharedCaliberAmount();
 
+	UFUNCTION(BlueprintCallable, Category = "Functions", meta = (Tooltip = "Set IsHolstering to false to un holster"))
+	virtual void HolsterWeapon(bool IsHolstering);
+
+	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
+	void HolsterWeapon_BP();
+
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	void Reload();
 
@@ -467,8 +473,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Name")
 	FName WeaponName;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Variables", meta = (Tooltip = "Only set this variable if you are placing the gun in the level, do not set this at runtime"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Variables", meta = (Tooltip = "Only set this variable if you are placing the gun in the level, do not set this at runtime"))
 	bool WasPickedupBeginPlay;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (Tooltip = "If true movement speed is divided by the movement speed penalty instead of subtracted"))
+	bool ShouldDivideMovementSpeedPenalty;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement", meta = (Tooltip = "If true movement speed is divided by the movement speed penalty instead of subtracted"))
+	bool ShouldDivideSprintSpeedPenalty;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float MovementSpeedPenalty;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float SprintSpeedPenalty;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (Tooltip = "The amount of time it takes to refill the magazine, 0 = instant, -1 = time for player animation to finish, -2 = time for gun animation to finish, if you have animation montages assigned time will be based on the animation montage", ClampMin = -2))
 	float ReloadSpeed;
@@ -603,6 +621,45 @@ protected:
 
 public:
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (Tooltip = "This is the minimum input for weapon sway for example how slow you can move your mouse and still have sway or how far you move the thumbstick on a controller", ClampMin = 0.0f, ClampMax = 1.0f))
+	float MinLookInputForWeaponSway;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway")
+	bool ShouldHaveHorizontalWeaponSway;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway")
+	bool ShouldHaveVerticalWeaponSway;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (Tooltip = "0 = Yes, 1 = Use both location and rotation, 2 = Use location", ClampMin = 0, ClampMax = 2))
+	int UseRotationForHorizontalWeaponSway;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (Tooltip = "If true the weapon will sway in the opposite direction of where the player is looking"))
+	bool HorizontalWeaponSwayOppositeDirection;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (ClampMin = 0.0f))
+	float MaxHorzontalWeaponSwayRotation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (ClampMin = 0.0f))
+	float MaxHorzontalWeaponSwayDistance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (Tooltip = "0 = Yes, 1 = Use both location and rotation, 2 = Use location, NOTE: For the default arms mesh DO NOT use rotation for becuase the origin point is way too low, instead use a model with the origin point in the correct position", ClampMin = 0, ClampMax = 2))
+	int UseRotationForVerticalWeaponSway;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (Tooltip = "If true the weapon will sway in the opposite direction of where the player is looking"))
+	bool VerticalWeaponSwayOppositeDirection;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (ClampMin = 0.0f))
+	float MaxVerticalWeaponSwayRotation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (ClampMin = 0.0f))
+	float MaxVerticalWeaponSwayDistance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (Tooltip = "Lower numbers make it slower but 0 makes it instant", ClampMin = 0.0f))
+	float HorizontalWeaponSwaySpeed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Sway", meta = (Tooltip = "Lower numbers make it slower but 0 makes it instant", ClampMin = 0.0f))
+	float VerticalWeaponSwaySpeed;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "If set to 0 it will just use the animation length, if this is not 0 it will use this to determine how long it takes to switch off of and onto this weapon, if you have animation montages assigned time will be based on the animation montage", ClampMin = 0.0f))
 	float WeaponSwitchTime;
 
@@ -611,6 +668,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
 	UAnimMontage* WeaponSwitchAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool ResetArmsAnimationAfterWeaponSwitch;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
 	UAnimationAsset* ThirdPersonWeaponSwitchAnimation;
@@ -645,11 +705,59 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Played when switching to another gun, only applies if you are using a skeletal mesh for your gun"))
 	UAnimMontage* SwitchOffGunAnimationMontage;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the gun's mesh component"))
+	UAnimationAsset* HolsterWeaponGunAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the gun's mesh component"))
+	UAnimMontage* HolsterWeaponGunAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimationAsset* HolsterWeaponAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimMontage* HolsterWeaponAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool ResetArmsAnimationAfterHolster;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component"))
+	UAnimationAsset* HolsterWeaponThirdPersonAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component"))
+	UAnimMontage* HolsterWeaponThirdPersonAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the gun's mesh component"))
+	UAnimationAsset* UnHolsterWeaponGunAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the gun's mesh component"))
+	UAnimMontage* UnHolsterWeaponGunAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimationAsset* UnHolsterWeaponAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
+	UAnimMontage* UnHolsterWeaponAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool ResetArmsAnimationAfterUnHolster;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component"))
+	UAnimationAsset* UnHolsterWeaponThirdPersonAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's mesh component"))
+	UAnimMontage* UnHolsterWeaponThirdPersonAnimationMontage;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
 	UAnimationAsset* ReloadAnimation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms"))
 	UAnimMontage* ReloadAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool ResetArmsAnimationAfterReload;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool ResetArmsAnimationAfterCanceledReload;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "This plays on the character's arms when the gun is emptied"))
 	UAnimationAsset* ReloadEmptyAnimation;
@@ -710,6 +818,33 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Plays when the gun is emptied, only applies if you are using a skeletal mesh for your gun"))
 	UAnimMontage* ReloadEmptyGunAnimationMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Clear this if you want to set the animation in the animation blueprint or if you just don't want an animation, this plays on the player character"))
+	UAnimationAsset* SprintAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool LoopSprintAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool ResetArmsAnimationAfterUnSprinting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool SetSprintingSpeedAfterAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Clear this if you want to set the animation in the animation blueprint or if you just don't want an animation, this plays on the player character"))
+	UAnimationAsset* UnSprintAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool SetDefaultSpeedAfterAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Clear this if you want to set the animation in the animation blueprint or if you just don't want an animation, this plays on the player character"))
+	UAnimationAsset* ThirdPersonSprintAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations", meta = (Tooltip = "Clear this if you want to set the animation in the animation blueprint or if you just don't want an animation, this plays on the player character"))
+	UAnimationAsset* ThirdPersonUnSprintAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	bool LoopThirdPersonSprintAnimation;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Ammo")
 	TArray<AMultiplayerBulletCasing*> SpawnedBulletCasings;

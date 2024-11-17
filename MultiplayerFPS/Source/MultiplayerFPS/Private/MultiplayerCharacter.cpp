@@ -1,5 +1,4 @@
 // Fill out your copyright notice in the Description page of Project Settings.
-// the reason you'll see weird parenthesis on if statements is for linux compatibility
 
 #include "MultiplayerCharacter.h"
 #include "Kismet/GameplayStatics.h"
@@ -10,6 +9,7 @@
 #include "MultiplayerPlayerController.h"
 #include "TimerManager.h"
 #include "Engine/Engine.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 // Sets default values
 AMultiplayerCharacter::AMultiplayerCharacter()
@@ -39,7 +39,7 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	HealthComponent = CreateDefaultSubobject<UMultiplayerHealthComponent>(TEXT("Health Component"));
 
 
-	/* ************* Settings ************* */
+	HoldingMoveInput = false;
 	FieldOfView = 90.0f;
 	MouseDefaultSensitivityX = 0.5f;
 	MouseAimingSensitivityX = 0.275f;
@@ -57,11 +57,27 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	GamepadAimingSensitivityMultiplier = 0.55f;
 	ToggleAim = false;
 	HoldButtonToJump = false;
+	DefaultMovementSpeed = 600.0f;
+	SprintingMovementSpeed = 900.0f;
+	ApplySpeedPenaltyIfWeaponsHolstered = false;
+	CanSprint = true;
+	ToggleSprint = 1;
+	SprintCancelsReload = false;
+	FiringCancelsSprint = true;
+	AimingCancelsSprint = true;
+	ShouldHolsterWeaponsWhenSprinting = 0;
+	CanOnlySprintWhileMovingForward = false;
+	MinInputToSprint = FVector2D(0.6f, 0.6f);
+	MinSpeedToStartSprinting = 15.0f;
+	IsSprinting = false;
+	ShouldGoBackToSprinting = false;
+	TimeToPlaySprintAnimationAfterFire = 0.19f;
 	UseAimSensitivityMultipler = true;
 
 	IMC_Priority = 0;
 	CurrentFOV = 90.0f;
 	UsingThirdPerson = false;
+	IsSwitchingPerspective = false;
 	UsingThirdPersonLeftShoulder = false;
 	FirstPersonSpringArmLength = 0.0f;
 	ThirdPersonSpringArmLengthRight = 100.0f;
@@ -89,6 +105,9 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	InteractDistance = 175.0f;
 	OverlappingInteractable = false;
 	CanShoot = true;
+	IsFiring = false;
+	ReturnToPreviousAnimationAfterFiring = true;
+	ResetArmsAnimationWhenFiring = true;
 	ShootingCancelsReload = true;
 	CurrentWeaponIndex = 0;
 	DropWeaponsOnDeath = 2;
@@ -100,10 +119,27 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	HoldingAimInput = false;
 	CanAim = true;
 	AimingCancelsReload = true;
+	HolsteringWeaponCancelsReload = true;
 	IsAiming = false;
+	IsZoomingForAim = false;
 	IsADSing = false;
 	IsZoomedIn = false;
+	CanHolsterWeapons = true;
+	CanUnHolsterWeapons = true;
+	IsWeaponHolstered = false;
+	CanShootToUnHolsterWeapon = true;
+	CanAimToUnHolsterWeapon = true;
+	TimeToHolsterWeapon = -3.0f;
+	TimeToUnHolsterWeapon = -3.0f;
+	TimeToUnHolsterWeaponWhenFiring = 0.0f;
+	TimeToUnHolsterWeaponWhenAiming = 0.0f;
 	UseADS = 0;
+	ArmsHorizontalRotaitonAxis = 2;
+	ArmsHorizontalLocationAxis = 1;
+	ArmsVerticalRotationAxis = 1;
+	ArmsVerticalLocationAxis = 2;
+	CanHaveWeaponSway = true;
+	CanResetArmsPositionForWeaponSway = true;
 	CanGetHitMarkersOnSelf = false;
 	HeadSocketName = "head";
 	CameraHeadLocation = FVector(2.0f, 7.5f, 0.0f);
@@ -317,12 +353,30 @@ void AMultiplayerCharacter::RecalculateBaseEyeHeight()
 
 void AMultiplayerCharacter::Move(const FInputActionValue& Value)
 {
-	FVector2D MovementVector = Value.Get<FVector2D>();
+	MovementVector = Value.Get<FVector2D>();
+
+	HoldingMoveInput = true;
 
 	if (Controller)
 	{
 		AddMovementInput(GetActorForwardVector(), MovementVector.Y);
 		AddMovementInput(GetActorRightVector(), MovementVector.X);
+	}
+
+	if (CanOnlySprintWhileMovingForward == true && MovementVector.Y < MinInputToSprint.Y && IsSprinting == true)
+	{
+		StopSprinting();
+	}
+}
+
+void AMultiplayerCharacter::ReleaseMove(const FInputActionValue& Value)
+{
+	HoldingMoveInput = false;
+	
+	if ((MinSpeedToStartSprinting > 0.0f || CanOnlySprintWhileMovingForward == true) && IsSprinting == true)
+	{
+		StopSprinting();
+		MovementVector = FVector2D(0.0f, 0.0f);
 	}
 }
 
@@ -334,6 +388,213 @@ void AMultiplayerCharacter::Look(const FInputActionValue& Value)
 	{
 		AddControllerYawInput(LookVector.X * CurrentMouseSensitivityX);
 		AddControllerPitchInput(LookVector.Y * CurrentMouseSensitivityY);
+
+		if (CanHaveWeaponSway == true && ArmsMesh && IsAiming == false && IsADSing == false && IsZoomedIn == false && GetWeapon())
+		{
+			if (GetWeapon()->ShouldHaveHorizontalWeaponSway == true && FMath::Abs(LookVector.X) >= GetWeapon()->MinLookInputForWeaponSway)
+			{
+				if (GetWeapon()->UseRotationForHorizontalWeaponSway <= 1)
+				{
+					float TargetRotation;
+
+					if (GetWeapon()->HorizontalWeaponSwayOppositeDirection == true)
+					{
+						switch (ArmsHorizontalRotaitonAxis)
+						{
+						case 0:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Roll - (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						case 1:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Pitch - (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						default:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Yaw - (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						}
+					}
+					else
+					{
+						switch (ArmsHorizontalRotaitonAxis)
+						{
+						case 0:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Roll + (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						case 1:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Pitch + (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						default:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Yaw + (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						}
+					}
+					
+					ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Yaw, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Roll));
+
+					switch (ArmsHorizontalRotaitonAxis)
+					{
+					case 0:
+						ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, ArmsMesh->GetRelativeRotation().Yaw, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Roll, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed)));
+						break;
+					case 1:
+						ArmsMesh->SetRelativeRotation(FRotator(UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Pitch, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Yaw, ArmsMesh->GetRelativeRotation().Roll));
+						break;
+					default:
+						ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Yaw, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Roll));
+						break;
+					}
+				}
+
+				if (GetWeapon()->UseRotationForHorizontalWeaponSway >= 1)
+				{
+					float TargetLocation;
+
+					if (GetWeapon()->HorizontalWeaponSwayOppositeDirection == true)
+					{
+						switch (ArmsHorizontalLocationAxis)
+						{
+						case 0:
+							TargetLocation = ArmsMesh->GetRelativeLocation().X + (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						case 1:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Y + (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						default:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Z + (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						}
+					}
+					else
+					{
+						switch (ArmsHorizontalLocationAxis)
+						{
+						case 0:
+							TargetLocation = ArmsMesh->GetRelativeLocation().X - (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						case 1:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Y - (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						default:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Z - (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						}
+					}
+					
+					switch (ArmsHorizontalLocationAxis)
+					{
+					case 0:
+						ArmsMesh->SetRelativeLocation(FVector(UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().X, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeLocation().Y, ArmsMesh->GetRelativeLocation().Z));
+						break;
+					case 1:
+						ArmsMesh->SetRelativeLocation(FVector(ArmsMesh->GetRelativeLocation().X, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().Y, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeLocation().Z));
+						break;
+					default:
+						ArmsMesh->SetRelativeLocation(FVector(ArmsMesh->GetRelativeLocation().X, ArmsMesh->GetRelativeLocation().Y, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().Z, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed)));
+						break;
+					}
+				}
+			}
+
+			if (GetWeapon()->ShouldHaveVerticalWeaponSway == true && FMath::Abs(LookVector.Y) >= GetWeapon()->MinLookInputForWeaponSway)
+			{
+				if (GetWeapon()->UseRotationForVerticalWeaponSway <= 1)
+				{
+					float TargetRotation;
+
+					if (GetWeapon()->VerticalWeaponSwayOppositeDirection == true)
+					{
+						switch (ArmsVerticalRotationAxis)
+						{
+						case 0:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Roll - (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						case 1:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Pitch - (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						default:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Yaw - (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						}
+					}
+					else
+					{
+						switch (ArmsVerticalRotationAxis)
+						{
+						case 0:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Roll + (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						case 1:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Pitch + (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						default:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Yaw + (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						}
+					}
+					
+					switch (ArmsVerticalRotationAxis)
+					{
+					case 0:
+						ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, ArmsMesh->GetRelativeRotation().Yaw, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Roll, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed)));
+						break;
+					case 1:
+						ArmsMesh->SetRelativeRotation(FRotator(UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Pitch, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Yaw, ArmsMesh->GetRelativeRotation().Roll));
+						break;
+					default:
+						ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Yaw, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Roll));
+						break;
+					}
+				}
+
+				if (GetWeapon()->UseRotationForVerticalWeaponSway >= 1)
+				{
+					float TargetLocation;
+
+					if (GetWeapon()->VerticalWeaponSwayOppositeDirection == true)
+					{
+						switch (ArmsVerticalLocationAxis)
+						{
+						case 0:
+							TargetLocation = ArmsMesh->GetRelativeLocation().X + (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						case 1:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Y + (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						default:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Z + (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						}
+					}
+					else
+					{
+						switch (ArmsVerticalLocationAxis)
+						{
+						case 0:
+							TargetLocation = ArmsMesh->GetRelativeLocation().X - (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						case 1:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Y - (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						default:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Z - (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						}
+					}
+					
+					switch (ArmsVerticalLocationAxis)
+					{
+					case 0:
+						ArmsMesh->SetRelativeLocation(FVector(UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().X, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed), ArmsMesh->GetRelativeLocation().Y, ArmsMesh->GetRelativeLocation().Z));
+						break;
+					case 1:
+						ArmsMesh->SetRelativeLocation(FVector(ArmsMesh->GetRelativeLocation().X, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().Y, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed), ArmsMesh->GetRelativeLocation().Z));
+						break;
+					default:
+						ArmsMesh->SetRelativeLocation(FVector(ArmsMesh->GetRelativeLocation().X, ArmsMesh->GetRelativeLocation().Y, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().Z, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed)));
+						break;
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -345,6 +606,213 @@ void AMultiplayerCharacter::GamepadLook(const FInputActionValue& Value)
 	{
 		AddControllerYawInput(LookVector.X * CurrentGamepadSensitivityX);
 		AddControllerPitchInput(LookVector.Y * CurrentGamepadSensitivityY);
+
+		if (CanHaveWeaponSway == true && ArmsMesh && IsAiming == false && IsADSing == false && IsZoomedIn == false && GetWeapon())
+		{
+			if (GetWeapon()->ShouldHaveHorizontalWeaponSway == true && FMath::Abs(LookVector.X) >= GetWeapon()->MinLookInputForWeaponSway)
+			{
+				if (GetWeapon()->UseRotationForHorizontalWeaponSway <= 1)
+				{
+					float TargetRotation;
+
+					if (GetWeapon()->HorizontalWeaponSwayOppositeDirection == true)
+					{
+						switch (ArmsHorizontalRotaitonAxis)
+						{
+						case 0:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Roll - (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						case 1:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Pitch - (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						default:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Yaw - (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						}
+					}
+					else
+					{
+						switch (ArmsHorizontalRotaitonAxis)
+						{
+						case 0:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Roll + (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						case 1:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Pitch + (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						default:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Yaw + (GetWeapon()->MaxHorzontalWeaponSwayRotation * LookVector.X);
+							break;
+						}
+					}
+					
+					ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Yaw, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Roll));
+
+					switch (ArmsHorizontalRotaitonAxis)
+					{
+					case 0:
+						ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, ArmsMesh->GetRelativeRotation().Yaw, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Roll, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed)));
+						break;
+					case 1:
+						ArmsMesh->SetRelativeRotation(FRotator(UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Pitch, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Yaw, ArmsMesh->GetRelativeRotation().Roll));
+						break;
+					default:
+						ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Yaw, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Roll));
+						break;
+					}
+				}
+
+				if (GetWeapon()->UseRotationForHorizontalWeaponSway >= 1)
+				{
+					float TargetLocation;
+
+					if (GetWeapon()->HorizontalWeaponSwayOppositeDirection == true)
+					{
+						switch (ArmsHorizontalLocationAxis)
+						{
+						case 0:
+							TargetLocation = ArmsMesh->GetRelativeLocation().X + (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						case 1:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Y + (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						default:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Z + (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						}
+					}
+					else
+					{
+						switch (ArmsHorizontalLocationAxis)
+						{
+						case 0:
+							TargetLocation = ArmsMesh->GetRelativeLocation().X - (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						case 1:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Y - (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						default:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Z - (GetWeapon()->MaxHorzontalWeaponSwayDistance * LookVector.X);
+							break;
+						}
+					}
+					
+					switch (ArmsHorizontalLocationAxis)
+					{
+					case 0:
+						ArmsMesh->SetRelativeLocation(FVector(UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().X, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeLocation().Y, ArmsMesh->GetRelativeLocation().Z));
+						break;
+					case 1:
+						ArmsMesh->SetRelativeLocation(FVector(ArmsMesh->GetRelativeLocation().X, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().Y, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed), ArmsMesh->GetRelativeLocation().Z));
+						break;
+					default:
+						ArmsMesh->SetRelativeLocation(FVector(ArmsMesh->GetRelativeLocation().X, ArmsMesh->GetRelativeLocation().Y, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().Z, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->HorizontalWeaponSwaySpeed)));
+						break;
+					}
+				}
+			}
+
+			if (GetWeapon()->ShouldHaveVerticalWeaponSway == true && FMath::Abs(LookVector.Y) >= GetWeapon()->MinLookInputForWeaponSway)
+			{
+				if (GetWeapon()->UseRotationForVerticalWeaponSway <= 1)
+				{
+					float TargetRotation;
+
+					if (GetWeapon()->VerticalWeaponSwayOppositeDirection == true)
+					{
+						switch (ArmsVerticalRotationAxis)
+						{
+						case 0:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Roll - (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						case 1:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Pitch - (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						default:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Yaw - (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						}
+					}
+					else
+					{
+						switch (ArmsVerticalRotationAxis)
+						{
+						case 0:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Roll + (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						case 1:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Pitch + (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						default:
+							TargetRotation = ArmsMesh->GetRelativeRotation().Yaw + (GetWeapon()->MaxVerticalWeaponSwayRotation * LookVector.Y);
+							break;
+						}
+					}
+					
+					switch (ArmsVerticalRotationAxis)
+					{
+					case 0:
+						ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, ArmsMesh->GetRelativeRotation().Yaw, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Roll, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed)));
+						break;
+					case 1:
+						ArmsMesh->SetRelativeRotation(FRotator(UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Pitch, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Yaw, ArmsMesh->GetRelativeRotation().Roll));
+						break;
+					default:
+						ArmsMesh->SetRelativeRotation(FRotator(ArmsMesh->GetRelativeRotation().Pitch, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeRotation().Yaw, TargetRotation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed), ArmsMesh->GetRelativeRotation().Roll));
+						break;
+					}
+				}
+
+				if (GetWeapon()->UseRotationForVerticalWeaponSway >= 1)
+				{
+					float TargetLocation;
+
+					if (GetWeapon()->VerticalWeaponSwayOppositeDirection == true)
+					{
+						switch (ArmsVerticalLocationAxis)
+						{
+						case 0:
+							TargetLocation = ArmsMesh->GetRelativeLocation().X + (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						case 1:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Y + (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						default:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Z + (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						}
+					}
+					else
+					{
+						switch (ArmsVerticalLocationAxis)
+						{
+						case 0:
+							TargetLocation = ArmsMesh->GetRelativeLocation().X - (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						case 1:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Y - (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						default:
+							TargetLocation = ArmsMesh->GetRelativeLocation().Z - (GetWeapon()->MaxVerticalWeaponSwayDistance * LookVector.Y);
+							break;
+						}
+					}
+					
+					switch (ArmsVerticalLocationAxis)
+					{
+					case 0:
+						ArmsMesh->SetRelativeLocation(FVector(UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().X, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed), ArmsMesh->GetRelativeLocation().Y, ArmsMesh->GetRelativeLocation().Z));
+						break;
+					case 1:
+						ArmsMesh->SetRelativeLocation(FVector(ArmsMesh->GetRelativeLocation().X, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().Y, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed), ArmsMesh->GetRelativeLocation().Z));
+						break;
+					default:
+						ArmsMesh->SetRelativeLocation(FVector(ArmsMesh->GetRelativeLocation().X, ArmsMesh->GetRelativeLocation().Y, UKismetMathLibrary::FInterpTo(ArmsMesh->GetRelativeLocation().Z, TargetLocation, GetWorld()->GetDeltaSeconds(), GetWeapon()->VerticalWeaponSwaySpeed)));
+						break;
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -370,6 +838,392 @@ void AMultiplayerCharacter::ReleaseJump()
 {
 	StopJumping();
 	HoldingJumpInput = false;
+}
+
+void AMultiplayerCharacter::SetMovementSpeedBasedOnSettings()
+{
+	if (GetCharacterMovement())
+	{
+		float NewSpeed;
+		
+		if (IsSprinting == true)
+		{
+			if (GetWeapon() && (GetIsWeaponHolstered() == false || (GetIsWeaponHolstered() == true && ApplySpeedPenaltyIfWeaponsHolstered == true)))
+			{
+				if (GetWeapon()->ShouldDivideSprintSpeedPenalty == true)
+				{
+					NewSpeed = SprintingMovementSpeed / GetWeapon()->SprintSpeedPenalty;
+				}
+				else
+				{
+					NewSpeed = SprintingMovementSpeed - GetWeapon()->SprintSpeedPenalty;
+				}
+			}
+			else
+			{
+				NewSpeed = SprintingMovementSpeed;
+
+				if (!GetWeapon())
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "If this is only showing up on begin play you can ignore it, Current Weapon Invalid, Using Default Sprint Speed Instead MultiplayerCharacter.cpp:SetMovementSpeedBasedOnSettings");
+				}
+			}
+			
+			SetMovementSpeedBasedOnSettings_BP(NewSpeed);
+		}
+		else
+		{
+			if (GetWeapon() && (GetIsWeaponHolstered() == false || (GetIsWeaponHolstered() == true && ApplySpeedPenaltyIfWeaponsHolstered == true)))
+			{
+				if (GetWeapon()->ShouldDivideSprintSpeedPenalty == true)
+				{
+					NewSpeed = DefaultMovementSpeed / GetWeapon()->MovementSpeedPenalty;
+				}
+				else
+				{
+					NewSpeed = DefaultMovementSpeed - GetWeapon()->MovementSpeedPenalty;
+				}
+			}
+			else
+			{
+				NewSpeed = DefaultMovementSpeed;
+
+				if (!GetWeapon())
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "If this is only showing up on begin play you can ignore it, Current Weapon Invalid, Using Default Movement Speed Instead MultiplayerCharacter.cpp:SetMovementSpeedBasedOnSettings");
+				}
+			}
+			
+			SetMovementSpeedBasedOnSettings_BP(NewSpeed);
+		}
+	}
+}
+
+void AMultiplayerCharacter::SprintInput()
+{
+	if (ToggleSprint == 0)
+	{
+		HoldingSprintInput = true;
+
+		Sprint();
+	}
+	else
+	{
+		if (ToggleSprint == 2 && IsSprinting == true)
+		{
+			HoldingSprintInput = false;
+
+			StopSprinting();
+		}
+		else
+		{
+			HoldingSprintInput = true;
+			
+			Sprint();
+		}
+	}
+}
+
+void AMultiplayerCharacter::ReleaseSprintInput()
+{
+	if (ToggleSprint == 0)
+	{
+		HoldingSprintInput = false;
+
+		StopSprinting();
+	}
+}
+
+void AMultiplayerCharacter::Sprint()
+{
+	if (!HasAuthority())
+	{
+		ServerSprint();
+	}
+
+	if (CheckIfCanSprint() && IsSprinting == false)
+	{
+		IsSprinting = true;
+
+		if (SprintCancelsReload == true)
+		{
+			bool PutArmsUp = true;
+
+			if (GetWeapon())
+			{
+				if (GetWeapon()->SprintAnimation && ArmsMesh)
+				{
+					PutArmsUp = false;
+				}
+			}
+			
+			CancelReload(PutArmsUp);
+		}
+
+		if (FiringCancelsSprint == true)
+		{
+			StopFiring(true);
+		}
+
+		if (AimingCancelsSprint == true)
+		{
+			StopAiming();
+		}
+
+		if (ShouldHolsterWeaponsWhenSprinting >= 1)
+		{
+			HolsterWeapons();
+		}
+
+		if (GetWeapon())
+		{
+			if (GetWeapon()->SprintAnimation && ArmsMesh && IsReloading == false && IsFiring == false && IsAiming == false)
+			{
+				ArmsMesh->PlayAnimation(GetWeapon()->SprintAnimation, GetWeapon()->LoopSprintAnimation);
+
+				if (GetWeapon()->SetSprintingSpeedAfterAnimation == true)
+				{
+					GetWorldTimerManager().SetTimer(SprintTimerHandle, this, &AMultiplayerCharacter::SetMovementSpeedBasedOnSettings, GetWeapon()->SprintAnimation->GetPlayLength(), false, GetWeapon()->SprintAnimation->GetPlayLength());
+				}
+				else
+				{
+					SetMovementSpeedBasedOnSettings();
+				}
+			}
+			else
+			{
+				SetMovementSpeedBasedOnSettings();
+			}
+
+			if (GetWeapon()->ThirdPersonSprintAnimation && GetPlayerModelMesh())
+			{
+				GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonSprintAnimation, GetWeapon()->LoopThirdPersonSprintAnimation);
+			}
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Current Weapon Is Invalid MultiplayerCharacter.cpp:Sprint");
+		}
+	}
+}
+
+void AMultiplayerCharacter::ServerSprint_Implementation()
+{
+	Sprint();
+}
+
+void AMultiplayerCharacter::PlaySprintAnimation()
+{
+	if (GetWeapon())
+	{
+		if (ArmsMesh && GetWeapon()->SprintAnimation)
+		{
+			ArmsMesh->PlayAnimation(GetWeapon()->SprintAnimation, GetWeapon()->LoopSprintAnimation);
+		}
+
+		if (GetPlayerModelMesh() && GetWeapon()->ThirdPersonSprintAnimation)
+		{
+			GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonSprintAnimation, GetWeapon()->LoopThirdPersonSprintAnimation);
+		}
+	}
+}
+
+void AMultiplayerCharacter::StopSprinting(bool SkipAnimation, bool IsInAir)
+{
+	if (!HasAuthority())
+	{
+		ServerStopSprinting(SkipAnimation);
+	}
+		
+	if (IsSprinting == true)
+	{
+		IsSprinting = false;
+		ShouldGoBackToSprinting = IsInAir;
+
+		if (IsWeaponHolstered == true && ShouldHolsterWeaponsWhenSprinting == 1)
+		{
+			if (GetWeapon())
+			{
+				if (GetWeapon()->UnSprintAnimation && GetWeapon()->ThirdPersonUnSprintAnimation && SkipAnimation == false)
+				{
+					IsWeaponHolstered = false;
+					ApplyPerspectiveVisibility();
+				}
+				else
+				{
+					UnHolsterWeapons();
+				}
+			}
+			else
+			{
+				UnHolsterWeapons();
+			}
+		}
+
+		if (SkipAnimation == false && IsReloading == false && IsFiring == false && IsAiming == false)
+		{
+			if (GetWeapon())
+			{
+				if (GetWeapon()->UnSprintAnimation && ArmsMesh)
+				{
+					ArmsMesh->PlayAnimation(GetWeapon()->UnSprintAnimation, false);
+
+					if (GetWeapon()->SetDefaultSpeedAfterAnimation == true)
+					{
+						GetWorldTimerManager().SetTimer(SprintTimerHandle, this, &AMultiplayerCharacter::SetMovementSpeedBasedOnSettings, GetWeapon()->UnSprintAnimation->GetPlayLength(), false, GetWeapon()->UnSprintAnimation->GetPlayLength());
+					}
+					else
+					{
+						SetMovementSpeedBasedOnSettings();
+					}
+				}
+				else
+				{
+					SetMovementSpeedBasedOnSettings();
+				}
+
+				if (GetWeapon()->ThirdPersonUnSprintAnimation && GetPlayerModelMesh())
+				{
+					GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonUnSprintAnimation, false);
+				}
+			}
+			else
+			{
+				SetMovementSpeedBasedOnSettings();
+			}
+
+			float Delay = 0.0f;
+
+			if (GetWeapon())
+			{
+				if (GetUsingThirdPerson() == true && GetWeapon()->ThirdPersonUnSprintAnimation && GetPlayerModelMesh())
+				{
+					Delay = GetWeapon()->ThirdPersonUnSprintAnimation->GetPlayLength();
+				}
+				else if (GetUsingThirdPerson() == false && ArmsMesh && GetWeapon()->UnSprintAnimation)
+				{
+					Delay = GetWeapon()->UnSprintAnimation->GetPlayLength();
+				}
+			}
+
+			if (Delay > 0.0f)
+			{
+				GetWorldTimerManager().SetTimer(SprintTimerHandle, this, &AMultiplayerCharacter::StopSprinting1, Delay, false, Delay);
+			}
+			else
+			{
+				StopSprinting1();
+			}
+		}
+		else
+		{
+			SetMovementSpeedBasedOnSettings();
+
+			if (IsReloading == false)
+			{
+				StopSprinting1();
+			}
+		}
+	}
+}
+
+void AMultiplayerCharacter::ServerStopSprinting_Implementation(bool SkipAnimation)
+{
+	StopSprinting(SkipAnimation);
+}
+
+void AMultiplayerCharacter::StopSprinting1()
+{
+	if (IsReloading == false && IsFiring == false && IsAiming == false)
+	{
+		if (GetWeapon())
+		{
+			if (GetWeapon()->ResetArmsAnimationAfterUnSprinting == true)
+			{
+				SetArmsAnimationMode();
+			}
+		}
+		else
+		{
+			SetArmsAnimationMode();
+		}
+	}
+}
+
+bool AMultiplayerCharacter::CheckIfCanSprint()
+{
+	bool ShouldSprint = false;
+	
+	if (GetOwningController() && GetCharacterMovement())
+	{
+		if (GetOwningController()->CanSprint == true && CanSprint == true && GetCharacterMovement()->Velocity.Size() > MinSpeedToStartSprinting)
+		{
+			if ((FiringCancelsSprint == false || (FiringCancelsSprint == true && GetIsFiring() == false)) && (AimingCancelsSprint == false || (AimingCancelsSprint == true && IsAiming == false)))
+			{
+				if ((CanOnlySprintWhileMovingForward == false || (CanOnlySprintWhileMovingForward == true && MovementVector.Y >= MinInputToSprint.Y)) && (FMath::Abs(MovementVector.X) >= MinInputToSprint.X || FMath::Abs(MovementVector.Y) >= MinInputToSprint.Y))
+				{
+					if (GetCharacterMovement()->IsMovingOnGround())
+					{
+						ShouldSprint = true;
+					}
+					else
+					{
+						if (IsSprinting == true)
+						{
+							StopSprinting(false, true);
+							return false;
+						}
+						else if (ShouldGoBackToSprinting == true)
+						{
+							ShouldSprint = true;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if (ShouldSprint == false)
+	{
+		StopSprinting();
+	}
+
+	return ShouldSprint;
+}
+
+void AMultiplayerCharacter::CheckIfCanSprintNoReturn()
+{
+	bool ShouldSprint = false;
+	
+	if (GetOwningController() && GetCharacterMovement())
+	{
+		if (GetOwningController()->CanSprint == true && CanSprint == true && GetCharacterMovement()->Velocity.Size() > MinSpeedToStartSprinting)
+		{
+			if ((CanOnlySprintWhileMovingForward == false || (CanOnlySprintWhileMovingForward == true && MovementVector.Y >= MinInputToSprint.Y)) && (FMath::Abs(MovementVector.X) >= MinInputToSprint.X || FMath::Abs(MovementVector.Y) >= MinInputToSprint.Y))
+			{
+				if (GetCharacterMovement()->IsMovingOnGround() == false)
+				{
+					StopSprinting(false, true);
+					return;
+				}
+				else if (IsSprinting == false && ShouldGoBackToSprinting == true)
+				{
+					ShouldGoBackToSprinting = false;
+					Sprint();
+					return;
+				}
+				else
+				{
+					ShouldSprint = true;
+				}
+			}
+		}
+	}
+
+	if (ShouldSprint == false && IsSprinting == true)
+	{
+		StopSprinting();
+	}
 }
 
 void AMultiplayerCharacter::SetSensitivity()
@@ -481,6 +1335,8 @@ void AMultiplayerCharacter::Interact()
 					InteractReplicated(InteractableBeingOverlapped);
 				}
 			}
+
+			Interact_BP();
 		}
 	}
 }
@@ -611,6 +1467,8 @@ void AMultiplayerCharacter::ClientSetUsingThirdPerson_Implementation(bool NewUsi
 
 	if (SpringArm)
 	{
+		IsSwitchingPerspective = true;
+		
 		SwitchPerspective_BP(NewUsingThirdPerson, SnapCameraLocation);
 
 		FLatentActionInfo LatentActionInfo;
@@ -627,11 +1485,11 @@ void AMultiplayerCharacter::ClientSetUsingThirdPerson_Implementation(bool NewUsi
 
 				if (UsingThirdPersonLeftShoulder == true)
 				{
-					UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationLeft, SpringArm->GetRelativeRotation(), true, true, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
+					UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationLeft, SpringArm->GetRelativeRotation(), false, false, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
 				}
 				else
 				{
-					UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationRight, SpringArm->GetRelativeRotation(), true, true, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
+					UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationRight, SpringArm->GetRelativeRotation(), false, false, PerspectiveTransitionTime, false, EMoveComponentAction::Move, LatentActionInfo);
 				}
 			}
 			else
@@ -741,7 +1599,7 @@ void AMultiplayerCharacter::ApplyPerspectiveVisibility()
 
 		if (ArmsMesh)
 		{
-			if (HideFirstPersonArmsWithoutWeapon == true && GetHasWeapon() == false)
+			if (HideFirstPersonArmsWithoutWeapon == true && (GetHasWeapon() == false || GetIsWeaponHolstered() == true))
 			{
 				ArmsMesh->SetOwnerNoSee(true);
 			}
@@ -753,11 +1611,11 @@ void AMultiplayerCharacter::ApplyPerspectiveVisibility()
 
 		if (FirstPersonPlayerModel)
 		{
-			if (FirstPersonPlayerModelMesh && GetHasWeapon() == true)
+			if (FirstPersonPlayerModelMesh && GetHasWeapon() == true && GetIsWeaponHolstered() == false)
 			{
 				FirstPersonPlayerModel->SetSkeletalMesh(FirstPersonPlayerModelMesh);
 			}
-			else if (FirstPersonPlayerModelWithoutWeapons && GetHasWeapon() == false)
+			else if (FirstPersonPlayerModelWithoutWeapons && (GetHasWeapon() == false || GetIsWeaponHolstered() == true))
 			{
 				FirstPersonPlayerModel->SetSkeletalMesh(FirstPersonPlayerModelWithoutWeapons);
 			}
@@ -780,7 +1638,7 @@ void AMultiplayerCharacter::ApplyPerspectiveVisibility()
 		{
 			if (Weapon)
 			{
-				Weapon->ApplyPerspective(GetUsingThirdPerson());
+				Weapon->ApplyPerspective(GetUsingThirdPerson(), GetIsWeaponHolstered());
 			}
 		}
 	}
@@ -854,23 +1712,22 @@ void AMultiplayerCharacter::ClientSetThirdPersonShoulder_Implementation(bool Lef
 			
 			if (SpringArm)
 			{
+				IsSwitchingPerspective = true;
 				SetThirdPersonShoulder_BP(LeftShoulder, SnapCameraLocation);
 
 				FLatentActionInfo LatentActionInfo;
 				LatentActionInfo.CallbackTarget = this;
 
-				if (SnapCameraLocation == false)
+				if (LeftShoulder == true)
 				{
-					if (LeftShoulder == true)
-					{
-						UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationLeft, SpringArm->GetRelativeRotation(), true, true, ShoulderSwapTime, false, EMoveComponentAction::Move, LatentActionInfo);
-					}
-					else
-					{
-						UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationRight, SpringArm->GetRelativeRotation(), true, true, ShoulderSwapTime, false, EMoveComponentAction::Move, LatentActionInfo);
-					}
+					UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationLeft, SpringArm->GetRelativeRotation(), true, true, ShoulderSwapTime, false, EMoveComponentAction::Move, LatentActionInfo);
 				}
 				else
+				{
+					UKismetSystemLibrary::MoveComponentTo(SpringArm, ThirdPersonSpringArmLocationRight, SpringArm->GetRelativeRotation(), true, true, ShoulderSwapTime, false, EMoveComponentAction::Move, LatentActionInfo);
+				}
+
+				if (SnapCameraLocation == true)
 				{
 					if (LeftShoulder == true)
 					{
@@ -1506,6 +2363,7 @@ void AMultiplayerCharacter::ServerGiveLoadout_Implementation(const TArray<TSubcl
 	GiveLoadout(Loadout, MaxWeaponAmount);
 
 	GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::ApplyPerspectiveVisibility);
+	GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::SetMovementSpeedBasedOnSettings);
 }
 
 void AMultiplayerCharacter::GiveWeapon_Implementation(TSubclassOf<AMultiplayerGun> WeaponToSpawn, AMultiplayerGun* WeaponToPickup, bool SwitchToNewWeapon)
@@ -1540,6 +2398,7 @@ void AMultiplayerCharacter::GiveWeapon_Implementation(TSubclassOf<AMultiplayerGu
 		}
 
 		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::ApplyPerspectiveVisibility);
+		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::SetMovementSpeedBasedOnSettings);
 	}
 }
 
@@ -1707,6 +2566,11 @@ void AMultiplayerCharacter::MulticastRemoveWeapon_Implementation(bool RemoveAllW
 		AllWeapons.Empty();
 	}
 
+	if (GetHasWeapon() == false)
+	{
+		IsWeaponHolstered = false;
+	}
+
 	GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::ApplyPerspectiveVisibility);
 }
 
@@ -1724,20 +2588,6 @@ void AMultiplayerCharacter::RemoveWeaponPastIndex(int WeaponIndex, bool DestroyW
 		{
 			RemoveWeapon(false, DestroyWeapon, nullptr, WeaponIndex);
 		}
-	}
-}
-
-void AMultiplayerCharacter::SwitchWeaponsInput(const FInputActionValue& Value)
-{
-	float InputValue = Value.Get<float>();
-
-	if (InputValue == 1)
-	{
-		NextWeapon();
-	}
-	else
-	{
-		LastWeapon();
 	}
 }
 
@@ -2008,15 +2858,18 @@ void AMultiplayerCharacter::MulticastSwitchWeapons_Implementation(int Index, AMu
 {
 	if (GetHasWeapon() == true)
 	{
-		SetCanShoot(false);
-		SetCanAim(false);
-		StopFiring(true);
-		StopAiming();
-		CancelReload(false);
+		if (!GetIsWeaponHolstered())
+		{
+			SetCanShoot(false);
+			SetCanAim(false);
+			StopFiring(true);
+			StopAiming();
+			CancelReload(false);
+		}
 
 		float WeaponSwitchAnimationTime = 0.9f;
 
-		if (GetWeapon())
+		if (GetWeapon() && !GetIsWeaponHolstered())
 		{
 			if (GetWeapon()->UseTwoWeaponSwitchAnimations == true)
 			{
@@ -2105,9 +2958,18 @@ void AMultiplayerCharacter::MulticastSwitchWeapons_Implementation(int Index, AMu
 			HitMarkerSurfaceSounds = Gun->GetHitMarkerSurfaceSounds();
 		}
 
-		SetWeaponVisibility(false, CurrentWeaponIndex, true);
+		if (!GetIsWeaponHolstered())
+		{
+			SetWeaponVisibility(false, CurrentWeaponIndex, true);
 
-		GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, this, &AMultiplayerCharacter::SwitchWeapons1, WeaponSwitchAnimationTime, false, WeaponSwitchAnimationTime);
+			GetWorldTimerManager().SetTimer(SwitchWeaponsTimerHandle, this, &AMultiplayerCharacter::SwitchWeapons1, WeaponSwitchAnimationTime, false, WeaponSwitchAnimationTime);
+		}
+		else
+		{
+			SwitchWeapons1();
+		}
+
+		SetMovementSpeedBasedOnSettings();
 	}
 }
 
@@ -2134,27 +2996,49 @@ void AMultiplayerCharacter::MulticastSwitchWeapons1_Implementation()
 
 	if (GetHasWeapon() == true)
 	{
-		SetArmsAnimationMode();
-		SetPlayerModelAnimationMode();
-
 		SetCanShoot(true);
 		SetCanAim(true);
 
-		if (AMultiplayerGun* Weapon = GetWeapon(true))
+		if (!GetIsWeaponHolstered())
 		{
-			if (Weapon->GetAmmoInMagazine() <= 0 && Weapon->GetInfiniteAmmo() != 2)
+			if (GetWeapon())
 			{
-				Reload();
+				if (GetWeapon()->ResetArmsAnimationAfterWeaponSwitch == true)
+				{
+					SetArmsAnimationMode();
+				}
 			}
-			else if (Weapon->GetFireMode() != 0 && HoldingFireInput == true)
+			else
 			{
-				Fire();
+				SetArmsAnimationMode();
 			}
-		}
+			
+			SetPlayerModelAnimationMode();
 
-		if (HoldingAimInput == true)
-		{
-			Aim();
+			if (GetWeapon())
+			{
+				if (IsSprinting == true && ArmsMesh && GetWeapon()->SprintAnimation)
+				{
+					ArmsMesh->PlayAnimation(GetWeapon()->SprintAnimation, GetWeapon()->LoopSprintAnimation);
+				}
+			}
+
+			if (AMultiplayerGun* Weapon = GetWeapon(true))
+			{
+				if (Weapon->GetAmmoInMagazine() <= 0 && Weapon->GetInfiniteAmmo() != 2)
+				{
+					Reload();
+				}
+				else if (Weapon->GetFireMode() != 0 && HoldingFireInput == true)
+				{
+					Fire();
+				}
+			}
+
+			if (HoldingAimInput == true)
+			{
+				Aim();
+			}
 		}
 	}
 }
@@ -2167,14 +3051,17 @@ void AMultiplayerCharacter::SwitchToWeapon1()
 
 		if (GetAmountOfWeapons() >= 2)
 		{
-			SetCanShoot(false);
-			SetCanAim(false);
-			StopFiring(true);
-			StopAiming();
+			if (!GetIsWeaponHolstered())
+			{
+				SetCanShoot(false);
+				SetCanAim(false);
+				StopFiring(true);
+				StopAiming();
+			}
 
 			float WeaponSwitchAnimationTime = 0.9f;
 
-			if (GetWeapon())
+			if (GetWeapon() && !GetIsWeaponHolstered())
 			{
 				if (GetWeapon()->WeaponSwitchAnimation)
 				{
@@ -2245,7 +3132,7 @@ void AMultiplayerCharacter::SwitchToWeapon1()
 
 			CurrentWeaponIndex = 0;
 
-			if (IsSwitchingWeapons == false && IsReloading == false)
+			if (IsSwitchingWeapons == false && IsReloading == false && GetIsWeaponHolstered() == false)
 			{
 				IsSwitchingWeapons = true;
 
@@ -2269,14 +3156,17 @@ void AMultiplayerCharacter::SwitchToWeapon2()
 
 		if (GetAmountOfWeapons() >= 2)
 		{
-			SetCanShoot(false);
-			SetCanAim(false);
-			StopFiring(true);
-			StopAiming();
+			if (!GetIsWeaponHolstered())
+			{
+				SetCanShoot(false);
+				SetCanAim(false);
+				StopFiring(true);
+				StopAiming();
+			}
 
 			float WeaponSwitchAnimationTime = 0.9f;
 
-			if (GetWeapon())
+			if (GetWeapon() && !GetIsWeaponHolstered())
 			{
 				if (GetWeapon()->WeaponSwitchAnimation)
 				{
@@ -2347,7 +3237,7 @@ void AMultiplayerCharacter::SwitchToWeapon2()
 
 			CurrentWeaponIndex = 1;
 
-			if (IsSwitchingWeapons == false && IsReloading == false)
+			if (IsSwitchingWeapons == false && IsReloading == false && GetIsWeaponHolstered() == false)
 			{
 				IsSwitchingWeapons = true;
 
@@ -2366,15 +3256,22 @@ void AMultiplayerCharacter::SwitchToWeapon2()
 void AMultiplayerCharacter::PressFireInput()
 {
 	HoldingFireInput = true;
-
-	Fire();
+	
+	if (GetIsWeaponHolstered() == false)
+	{
+		Fire();
+	}
+	else if (CanShootToUnHolsterWeapon == true)
+	{
+		UnHolsterWeapons();
+	}
 }
 
 void AMultiplayerCharacter::ReleaseFireInput()
 {
 	HoldingFireInput = false;
 
-	StopFiring();
+	StopFiring(false, ReturnToPreviousAnimationAfterFiring);
 }
 
 void AMultiplayerCharacter::Fire()
@@ -2390,9 +3287,24 @@ void AMultiplayerCharacter::Fire()
 			{
 				if (Weapon->GetAmmoInMagazine() > 0 || Weapon->GetInfiniteAmmo() == 2)
 				{
-					if (ShootingCancelsReload == true || IsReloading == false)
+					if ((ShootingCancelsReload == true || IsReloading == false) && GetIsWeaponHolstered() == false)
 					{
+						GetWorldTimerManager().ClearTimer(GoBackToSprintTimerHandle);
+						
+						if (FiringCancelsSprint == true)
+						{
+							StopSprinting(true);
+						}
+						
 						CancelReload();
+
+						if (ArmsMesh && ResetArmsAnimationWhenFiring == true)
+						{
+							if (ArmsMesh->GetAnimationMode() != EAnimationMode::AnimationBlueprint)
+							{
+								SetArmsAnimationMode();
+							}
+						}
 
 						Weapon->FireInput();
 					}
@@ -2402,7 +3314,7 @@ void AMultiplayerCharacter::Fire()
 	}
 }
 
-void AMultiplayerCharacter::StopFiring(bool EvenCancelBurst)
+void AMultiplayerCharacter::StopFiring(bool EvenCancelBurst, bool ReturnToPreviousAnimation)
 {
 	for (auto& Weapon : GetAllWeapons())
 	{
@@ -2411,6 +3323,366 @@ void AMultiplayerCharacter::StopFiring(bool EvenCancelBurst)
 			Weapon->StopFiring(EvenCancelBurst);
 		}
 	}
+
+	SetIsFiring(false);
+
+	if (ReturnToPreviousAnimation == true)
+	{
+		if (IsSprinting == true)
+		{
+			if (TimeToPlaySprintAnimationAfterFire > 0.0f)
+			{
+				GetWorldTimerManager().SetTimer(GoBackToSprintTimerHandle, this, &AMultiplayerCharacter::PlaySprintAnimation, TimeToPlaySprintAnimationAfterFire, false, TimeToPlaySprintAnimationAfterFire);
+			}
+			else
+			{
+				PlaySprintAnimation();
+			}
+		}
+	}
+}
+
+void AMultiplayerCharacter::SetIsFiring(bool NewIsFiring)
+{
+	IsFiring = NewIsFiring;
+}
+
+bool AMultiplayerCharacter::GetIsFiring()
+{
+	return IsFiring;
+}
+
+void AMultiplayerCharacter::ToggleWeaponHolstered()
+{
+	if (GetIsWeaponHolstered() == true)
+	{
+		UnHolsterWeapons();
+	}
+	else
+	{
+		HolsterWeapons();
+	}
+}
+
+void AMultiplayerCharacter::HolsterWeapons()
+{
+	if (HasAuthority())
+	{
+		MulticastHolsterWeapons();
+	}
+	else
+	{
+		ServerHolsterWeapons();
+	}
+}
+
+void AMultiplayerCharacter::ServerHolsterWeapons_Implementation()
+{
+	MulticastHolsterWeapons();
+}
+
+void AMultiplayerCharacter::MulticastHolsterWeapons_Implementation()
+{
+	if (CanHolsterWeapons == true && GetIsWeaponHolstered() == false && (IsReloading == false || HolsteringWeaponCancelsReload == true))
+	{
+		IsWeaponHolstered = true;
+		
+		StopAiming();
+		StopFiring(true);
+
+		if (GetWeapon())
+		{
+			if (GetWeapon()->GetFireMode() == 0)
+			{
+				HoldingFireInput = false;
+			}
+		}
+		
+		if (IsReloading == true)
+		{
+			CancelReload(false);
+		}
+
+		if (GetWeapon())
+		{
+			GetWeapon()->HolsterWeapon(true);
+			
+			if (ArmsMesh)
+			{
+				float Delay = 0.0f;
+			
+				if (GetWeapon()->HolsterWeaponAnimation)
+				{
+					ArmsMesh->PlayAnimation(GetWeapon()->HolsterWeaponAnimation, false);
+
+					if ((TimeToHolsterWeapon < 0.0f && TimeToHolsterWeapon >= -1.0f) || (TimeToHolsterWeapon <= -3.0f && GetUsingThirdPerson() == false))
+					{
+						Delay = GetWeapon()->HolsterWeaponAnimation->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->HolsterWeaponThirdPersonAnimation && GetPlayerModelMesh())
+				{
+					GetPlayerModelMesh()->PlayAnimation(GetWeapon()->HolsterWeaponThirdPersonAnimation, false);
+
+					if ((TimeToHolsterWeapon < -1.0f && TimeToHolsterWeapon >= -2.0f) || (TimeToHolsterWeapon <= -3.0f && GetUsingThirdPerson() == true))
+					{
+						Delay = GetWeapon()->HolsterWeaponThirdPersonAnimation->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->HolsterWeaponAnimationMontage && ArmsMesh->GetAnimInstance())
+				{
+					ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->HolsterWeaponAnimationMontage);
+
+					if ((TimeToHolsterWeapon < 0.0f && TimeToHolsterWeapon >= -1.0f) || (TimeToHolsterWeapon <= -3.0f && GetUsingThirdPerson() == false))
+					{
+						Delay = GetWeapon()->HolsterWeaponAnimationMontage->GetPlayLength();
+					}
+				}
+				else if (!ArmsMesh->GetAnimInstance())
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "ArmsMesh->GetAnimInstance is Invalid MultiplayerCharacter.cpp:HolsterWeapon");
+				}
+
+				if (GetWeapon()->HolsterWeaponThirdPersonAnimationMontage && GetPlayerModelMesh())
+				{
+					if (GetPlayerModelMesh()->GetAnimInstance())
+					{
+						GetPlayerModelMesh()->GetAnimInstance()->Montage_Play(GetWeapon()->HolsterWeaponThirdPersonAnimationMontage);
+
+						if ((TimeToHolsterWeapon < -1.0f && TimeToHolsterWeapon >= -2.0f) || (TimeToHolsterWeapon <= -3.0f && GetUsingThirdPerson() == true))
+						{
+							Delay = GetWeapon()->HolsterWeaponAnimation->GetPlayLength();
+						}
+					}
+					else
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "ArmsMesh->GetAnimInstance is Invalid MultiplayerCharacter.cpp:HolsterWeapon");
+					}
+				}
+
+				if (Delay > 0.0f)
+				{
+					HolsterWeapon_BP();
+					
+					GetWorldTimerManager().SetTimer(HolsterWeaponsTimerHandle, this, &AMultiplayerCharacter::HolsterWeapons1, Delay, false, Delay);
+					return;
+				}
+			}
+		}
+
+		HolsterWeapon_BP();
+					
+		HolsterWeapons1();
+	}
+}
+
+void AMultiplayerCharacter::HolsterWeapons1()
+{
+	if (HasAuthority())
+	{
+		MulticastHolsterWeapons1();
+	}
+	else
+	{
+		ServerHolsterWeapons1();
+	}
+}
+
+void AMultiplayerCharacter::ServerHolsterWeapons1_Implementation()
+{
+	MulticastHolsterWeapons1();
+}
+
+void AMultiplayerCharacter::MulticastHolsterWeapons1_Implementation()
+{
+	ApplyPerspectiveVisibility();
+	SetWeaponVisibility(true, -1, false, false);
+	SetPlayerModelAnimationMode();
+	SetMovementSpeedBasedOnSettings();
+
+	if (GetWeapon())
+	{
+		if (GetWeapon()->ResetArmsAnimationAfterHolster == true)
+		{
+			SetArmsAnimationMode();
+		}
+	}
+}
+
+void AMultiplayerCharacter::UnHolsterWeapons()
+{
+	if (HasAuthority())
+	{
+		MulticastUnHolsterWeapons();
+	}
+	else
+	{
+		ServerUnHolsterWeapons();
+	}
+}
+
+void AMultiplayerCharacter::ServerUnHolsterWeapons_Implementation()
+{
+	MulticastUnHolsterWeapons();
+}
+
+void AMultiplayerCharacter::MulticastUnHolsterWeapons_Implementation()
+{
+	if (CanUnHolsterWeapons == true && GetIsWeaponHolstered() == true)
+	{
+		if (IsSprinting == true && ShouldHolsterWeaponsWhenSprinting >= 1)
+		{
+			StopSprinting();
+		}
+		
+		IsWeaponHolstered = false;
+
+		ApplyPerspectiveVisibility();
+
+		if (GetWeapon())
+		{
+			GetWeapon()->HolsterWeapon(false);
+			SetWeaponVisibility(false, CurrentWeaponIndex, true);
+			
+			float Delay = 0.0f;
+			
+			if (ArmsMesh)
+			{
+				if (GetWeapon()->UnHolsterWeaponAnimation)
+				{
+					ArmsMesh->PlayAnimation(GetWeapon()->UnHolsterWeaponAnimation, false);
+
+					if ((TimeToUnHolsterWeapon < 0.0f && TimeToUnHolsterWeapon >= -1.0f) || (TimeToUnHolsterWeapon <= -3.0f && GetUsingThirdPerson() == false))
+					{
+						Delay = GetWeapon()->UnHolsterWeaponAnimation->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->UnHolsterWeaponThirdPersonAnimation && GetPlayerModelMesh())
+				{
+					GetPlayerModelMesh()->PlayAnimation(GetWeapon()->UnHolsterWeaponThirdPersonAnimation, false);
+
+					if ((TimeToUnHolsterWeapon < -1.0f && TimeToUnHolsterWeapon >= -2.0f) || (TimeToUnHolsterWeapon <= -3.0f && GetUsingThirdPerson() == true))
+					{
+						Delay = GetWeapon()->UnHolsterWeaponThirdPersonAnimation->GetPlayLength();
+					}
+				}
+
+				if (GetWeapon()->UnHolsterWeaponAnimationMontage && ArmsMesh->GetAnimInstance())
+				{
+					ArmsMesh->GetAnimInstance()->Montage_Play(GetWeapon()->UnHolsterWeaponAnimationMontage);
+
+					if ((TimeToUnHolsterWeapon < 0.0f && TimeToUnHolsterWeapon >= -1.0f) || (TimeToUnHolsterWeapon <= -3.0f && GetUsingThirdPerson() == false))
+					{
+						Delay = GetWeapon()->UnHolsterWeaponAnimationMontage->GetPlayLength();
+					}
+				}
+				else if (!ArmsMesh->GetAnimInstance())
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "ArmsMesh->GetAnimInstance is Invalid MultiplayerCharacter.cpp:HolsterWeapon");
+				}
+
+				if (GetWeapon()->UnHolsterWeaponThirdPersonAnimationMontage && GetPlayerModelMesh())
+				{
+					if (GetPlayerModelMesh()->GetAnimInstance())
+					{
+						GetPlayerModelMesh()->GetAnimInstance()->Montage_Play(GetWeapon()->UnHolsterWeaponThirdPersonAnimationMontage);
+
+						if ((TimeToUnHolsterWeapon < -1.0f && TimeToUnHolsterWeapon >= -2.0f) || (TimeToUnHolsterWeapon <= -3.0f && GetUsingThirdPerson() == true))
+						{
+							Delay = GetWeapon()->UnHolsterWeaponAnimation->GetPlayLength();
+						}
+					}
+					else
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "ArmsMesh->GetAnimInstance is Invalid MultiplayerCharacter.cpp:HolsterWeapon");
+					}
+				}
+			}
+
+			if (HoldingFireInput == true)
+			{
+				Delay = TimeToUnHolsterWeaponWhenFiring;
+			}
+			else if (HoldingAimInput == true)
+			{
+				Delay = TimeToUnHolsterWeaponWhenAiming;
+			}
+
+			if (Delay > 0.0f)
+			{
+				UnHolsterWeapon_BP();
+					
+				GetWorldTimerManager().SetTimer(HolsterWeaponsTimerHandle, this, &AMultiplayerCharacter::UnHolsterWeapons1, Delay, false, Delay);
+				return;
+			}
+		}
+
+		UnHolsterWeapon_BP();
+
+		SetMovementSpeedBasedOnSettings();
+		UnHolsterWeapons1();
+	}
+}
+
+void AMultiplayerCharacter::UnHolsterWeapons1()
+{
+	if (HasAuthority())
+	{
+		MulticastUnHolsterWeapons1();
+	}
+	else
+	{
+		ServerUnHolsterWeapons1();
+	}
+}
+
+void AMultiplayerCharacter::ServerUnHolsterWeapons1_Implementation()
+{
+	MulticastUnHolsterWeapons1();
+}
+
+void AMultiplayerCharacter::MulticastUnHolsterWeapons1_Implementation()
+{
+	if (GetWeapon())
+	{
+		if (GetWeapon()->ResetArmsAnimationAfterUnHolster == true)
+		{
+			SetArmsAnimationMode();
+		}
+	}
+	else
+	{
+		SetArmsAnimationMode();
+	}
+	
+	SetPlayerModelAnimationMode();
+	SetMovementSpeedBasedOnSettings();
+
+	if (GetWeapon())
+	{
+		if (IsSprinting == true && ArmsMesh && GetWeapon()->SprintAnimation)
+		{
+			ArmsMesh->PlayAnimation(GetWeapon()->SprintAnimation, GetWeapon()->LoopSprintAnimation);
+		}
+	}
+    	
+	if (HoldingFireInput == true)
+	{
+		Fire();
+	}
+    
+    if (HoldingAimInput == true)
+    {
+	    Aim();
+    }
+}
+
+bool AMultiplayerCharacter::GetIsWeaponHolstered()
+{
+	return IsWeaponHolstered;
 }
 
 void AMultiplayerCharacter::AimInput()
@@ -2419,7 +3691,14 @@ void AMultiplayerCharacter::AimInput()
 	{
 		HoldingAimInput = true;
 
-		Aim();
+		if (GetIsWeaponHolstered() == false)
+		{
+			Aim();
+		}
+		else if (CanAimToUnHolsterWeapon == true)
+		{
+			UnHolsterWeapons();
+		}
 	}
 	else
 	{
@@ -2431,7 +3710,16 @@ void AMultiplayerCharacter::AimInput()
 		}
 		else
 		{
-			Aim();
+			HoldingAimInput = true;
+			
+			if (GetIsWeaponHolstered() == false)
+			{
+				Aim();
+			}
+			else if (CanAimToUnHolsterWeapon == true)
+			{
+				UnHolsterWeapons();
+			}
 		}
 	}
 }
@@ -2454,47 +3742,51 @@ void AMultiplayerCharacter::Aim()
 		{
 			if (AimingCancelsReload == true || IsReloading == false)
 			{
+				SetArmsAnimationMode();
+				
 				FVector AimLocation;
 				FRotator AimRotation;
 
+				float AimTime;
+
 				if ((UseADS == 0 && CurrentWeapon->GetUseADS() == 0) || CurrentWeapon->GetUseADS() == 2 || (UseADS == 1 && CurrentWeapon->GetUseADS() < 2))
 				{
+					IsZoomingForAim = true;
+						
 					AimLocation = CurrentWeapon->GetADSArmsLocation();
 					AimRotation = CurrentWeapon->GetADSArmsRotation();
 
+					AimTime = CurrentWeapon->GetTimeToADS();
+
 					if (CurrentWeapon->GetDivideAimingFOV() == true)
 					{
-						SetAimingFOV_BP(true, FieldOfView / CurrentWeapon->GetADSFOV(), CurrentWeapon->GetTimeToADS());
+						SetAimingFOV_BP(true, FieldOfView / CurrentWeapon->GetADSFOV(), AimTime);
 					}
 					else
 					{
-						SetAimingFOV_BP(true, FieldOfView - CurrentWeapon->GetADSFOV(), CurrentWeapon->GetTimeToADS());
+						SetAimingFOV_BP(true, FieldOfView - CurrentWeapon->GetADSFOV(), AimTime);
 					}
-
-					FLatentActionInfo LatentActionInfo;
-					LatentActionInfo.CallbackTarget = this;
-
-					UKismetSystemLibrary::MoveComponentTo(ArmsMesh, AimLocation, AimRotation, false, false, CurrentWeapon->GetTimeToADS(), false, EMoveComponentAction::Move, LatentActionInfo);
 				}
 				else
 				{
+					IsZoomingForAim = true;
+						
 					AimLocation = CurrentWeapon->GetZoomArmsLocation();
 					AimRotation = CurrentWeapon->GetZoomArmsRotation();
 
+					AimTime = CurrentWeapon->GetTimeToZoom();
+
 					if (CurrentWeapon->GetDivideAimingFOV() == true)
 					{
-						SetAimingFOV_BP(true, FieldOfView / CurrentWeapon->GetZoomFOV(), CurrentWeapon->GetTimeToZoom());
+						SetAimingFOV_BP(true, FieldOfView / CurrentWeapon->GetZoomFOV(), AimTime);
 					}
 					else
 					{
-						SetAimingFOV_BP(true, FieldOfView - CurrentWeapon->GetZoomFOV(), CurrentWeapon->GetTimeToZoom());
+						SetAimingFOV_BP(true, FieldOfView - CurrentWeapon->GetZoomFOV(), AimTime);
 					}
-
-					FLatentActionInfo LatentActionInfo;
-					LatentActionInfo.CallbackTarget = this;
-
-					UKismetSystemLibrary::MoveComponentTo(ArmsMesh, AimLocation, AimRotation, false, false, CurrentWeapon->GetTimeToZoom(), false, EMoveComponentAction::Move, LatentActionInfo);
 				}
+
+				SetAimingArmsPosition_BP(CurrentWeapon->GetPlayerArmsRelativeLocation(), CurrentWeapon->GetPlayerArmsRelativeRotation(), AimLocation, AimRotation, true, AimTime);
 			}
 		}
 	}
@@ -2522,14 +3814,16 @@ void AMultiplayerCharacter::MulticastAim_Implementation()
 		{
 			if (AimingCancelsReload == true || IsReloading == false)
 			{
+				if (AimingCancelsSprint == true)
+				{
+					StopSprinting(true);
+				}
+				
 				CancelReload();
 
 				IsAiming = true;
 
 				SetSensitivity();
-
-				FVector AimLocation;
-				FRotator AimRotation;
 
 				if ((UseADS == 0 && CurrentWeapon->GetUseADS() == 0) || CurrentWeapon->GetUseADS() == 2 || (UseADS == 1 && CurrentWeapon->GetUseADS() < 2))
 				{
@@ -2548,12 +3842,18 @@ void AMultiplayerCharacter::StopAiming()
 {
 	if (AMultiplayerGun* CurrentWeapon = GetWeapon(true))
 	{
-		if (IsAiming == true || IsADSing == true || IsZoomedIn == true)
+		if ((IsAiming == true || IsADSing == true || IsZoomedIn == true) && ArmsMesh)
 		{
+			FVector AimLocation;
+			FRotator AimRotation;
+			
 			float AimTime;
 
 			if ((UseADS == 0 && CurrentWeapon->GetUseADS() == 0) || CurrentWeapon->GetUseADS() == 2 || (UseADS == 1 && CurrentWeapon->GetUseADS() < 2))
 			{
+				AimLocation = CurrentWeapon->GetADSArmsLocation();
+				AimRotation = CurrentWeapon->GetADSArmsRotation();
+				
 				AimTime = CurrentWeapon->GetTimeToADS();
 
 				if (CurrentWeapon->GetDivideAimingFOV() == true)
@@ -2567,6 +3867,9 @@ void AMultiplayerCharacter::StopAiming()
 			}
 			else
 			{
+				AimLocation = CurrentWeapon->GetZoomArmsLocation();
+				AimRotation = CurrentWeapon->GetZoomArmsRotation();
+				
 				AimTime = CurrentWeapon->GetTimeToZoom();
 
 				if (CurrentWeapon->GetDivideAimingFOV() == true)
@@ -2579,10 +3882,22 @@ void AMultiplayerCharacter::StopAiming()
 				}
 			}
 
-			FLatentActionInfo LatentActionInfo;
-			LatentActionInfo.CallbackTarget = this;
+			IsZoomingForAim = true;
 
-			UKismetSystemLibrary::MoveComponentTo(ArmsMesh, CurrentWeapon->GetPlayerArmsRelativeLocation(), CurrentWeapon->GetPlayerArmsRelativeRotation(), false, false, AimTime, false, EMoveComponentAction::Move, LatentActionInfo);
+			SetAimingArmsPosition_BP(CurrentWeapon->GetPlayerArmsRelativeLocation(), CurrentWeapon->GetPlayerArmsRelativeRotation(), AimLocation, AimRotation, false, AimTime);
+
+			if (IsSprinting == true && GetWeapon())
+			{
+				if (GetWeapon()->SprintAnimation && ArmsMesh)
+				{
+					ArmsMesh->PlayAnimation(GetWeapon()->SprintAnimation, GetWeapon()->LoopSprintAnimation);
+				}
+
+				if (GetWeapon()->ThirdPersonSprintAnimation && GetPlayerModelMesh())
+				{
+					GetPlayerModelMesh()->PlayAnimation(GetWeapon()->ThirdPersonSprintAnimation, GetWeapon()->LoopThirdPersonSprintAnimation);
+				}
+			}
 		}
 	}
 
@@ -2695,6 +4010,7 @@ void AMultiplayerCharacter::MulticastReload_Implementation()
 			{
 				if ((Weapon->GetUseSharedCalibers() == false && Weapon->GetReserveAmmo() > 0) || (Weapon->GetUseSharedCalibers() == true && GetSharedCaliberAmount(Weapon->GetCaliberToUse()) > 0) || Weapon->GetInfiniteAmmo() == 1)
 				{
+	
 					StopFiring(true);
 					StopAiming();
 
@@ -2704,6 +4020,11 @@ void AMultiplayerCharacter::MulticastReload_Implementation()
 					}
 
 					IsReloading = true;
+					
+					if (SprintCancelsReload == true)
+					{
+						StopSprinting();
+					}
 
 					if (ArmsMesh)
 					{
@@ -3150,11 +4471,29 @@ void AMultiplayerCharacter::ServerReload2_Implementation()
 
 void AMultiplayerCharacter::MulticastReload2_Implementation()
 {
-	SetArmsAnimationMode();
+	if (GetWeapon())
+	{
+		if (GetWeapon()->ResetArmsAnimationAfterReload == true)
+		{
+			SetArmsAnimationMode();
+		}
+	}
+	else
+	{
+		SetArmsAnimationMode();
+	}
 
 	if (GetPlayerModelMesh())
 	{
 		GetPlayerModelMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	}
+
+	if (GetWeapon())
+	{
+		if (IsSprinting == true && ArmsMesh && GetWeapon()->SprintAnimation)
+		{
+			ArmsMesh->PlayAnimation(GetWeapon()->SprintAnimation, GetWeapon()->LoopSprintAnimation);
+		}
 	}
 
 	IsReloading = false;
@@ -3183,17 +4522,17 @@ void AMultiplayerCharacter::CancelReload(bool PutArmsBackUp)
 {
 	if (HasAuthority())
 	{
-		MulticastCancelReload();
+		MulticastCancelReload(PutArmsBackUp);
 	}
 	else
 	{
-		ServerCancelReload();
+		ServerCancelReload(PutArmsBackUp);
 	}
 }
 
 void AMultiplayerCharacter::ServerCancelReload_Implementation(bool PutArmsBackUp)
 {
-	MulticastCancelReload();
+	MulticastCancelReload(PutArmsBackUp);
 }
 
 void AMultiplayerCharacter::MulticastCancelReload_Implementation(bool PutArmsBackUp)
@@ -3204,7 +4543,17 @@ void AMultiplayerCharacter::MulticastCancelReload_Implementation(bool PutArmsBac
 
 		if (PutArmsBackUp == true)
 		{
-			SetArmsAnimationMode();
+			if (GetWeapon())
+			{
+				if (GetWeapon()->ResetArmsAnimationAfterCanceledReload == true)
+				{
+					SetArmsAnimationMode();
+				}
+			}
+			else
+			{
+				SetArmsAnimationMode();
+			}
 
 			if (GetPlayerModelMesh())
 			{
@@ -3358,6 +4707,14 @@ void AMultiplayerCharacter::SetArmsAnimationMode1()
 	}
 }
 
+void AMultiplayerCharacter::PlayArmsAnimation(UAnimationAsset* Animation, bool Looping)
+{
+	if (ArmsMesh && Animation)
+	{
+		ArmsMesh->PlayAnimation(Animation, Looping);
+	}
+}
+
 void AMultiplayerCharacter::SetPlayerModelAnimationMode(float Delay)
 {
 	if (Delay > 0.0f)
@@ -3383,6 +4740,12 @@ void AMultiplayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (ArmsMesh)
+	{
+		ArmsDefaultLocation = ArmsMesh->GetRelativeLocation();
+		ArmsDefaultRotation = ArmsMesh->GetRelativeRotation();
+	}
+
 	RecalculateBaseEyeHeight();
 	SetOwningController();
 
@@ -3397,6 +4760,15 @@ void AMultiplayerCharacter::BeginPlay()
 			HealthComponent->SetOwningPlayerController(OwningController);
 		}
 	}
+
+	if (GetCharacterMovement() && DefaultMovementSpeed == 600.0f)
+	{
+		DefaultMovementSpeed = GetCharacterMovement()->MaxWalkSpeed;
+	}
+
+	SetMovementSpeedBasedOnSettings();
+
+	GetWorldTimerManager().SetTimer(CheckIfCanSprintTimerHandle, this, &AMultiplayerCharacter::CheckIfCanSprintNoReturn, 0.1f, true, 0.1f);
 }
 
 // Called every frame
@@ -3413,6 +4785,38 @@ void AMultiplayerCharacter::Tick(float DeltaTime)
 		{
 			ReplicateCameraTransform(CameraComponent->GetComponentLocation(), CameraComponent->GetComponentRotation());
 		}
+
+		if (CanResetArmsPositionForWeaponSway == true && ArmsMesh && IsAiming == false && IsADSing == false && IsZoomedIn == false && GetWeapon())
+		{
+			if (GetWeapon()->ShouldHaveHorizontalWeaponSway == true || GetWeapon()->ShouldHaveVerticalWeaponSway == true)
+			{
+				FRotator TargetRotation;
+
+				if (GetHasWeapon() && GetWeapon())
+				{
+					TargetRotation = GetWeapon()->GetPlayerArmsRelativeRotation();
+				}
+				else
+				{
+					TargetRotation = ArmsDefaultRotation;
+				}
+				
+				ArmsMesh->SetRelativeRotation(UKismetMathLibrary::RInterpTo(ArmsMesh->GetRelativeRotation(), TargetRotation, DeltaTime, GetWeapon()->VerticalWeaponSwaySpeed));
+
+				FVector TargetLocation;
+
+				if (GetHasWeapon() && GetWeapon())
+				{
+					TargetLocation = GetWeapon()->GetPlayerArmsRelativeLocation();
+				}
+				else
+				{
+					TargetLocation = ArmsDefaultLocation;
+				}
+
+				ArmsMesh->SetRelativeLocation(UKismetMathLibrary::VInterpTo(ArmsMesh->GetRelativeLocation(), TargetLocation, DeltaTime, GetWeapon()->VerticalWeaponSwaySpeed));
+			}
+		}
 	}
 }
 
@@ -3426,6 +4830,7 @@ void AMultiplayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(AMultiplayerCharacter, UsingThirdPerson);
 	DOREPLIFETIME(AMultiplayerCharacter, CanInteract);
 	DOREPLIFETIME(AMultiplayerCharacter, CanShoot);
+	DOREPLIFETIME(AMultiplayerCharacter, IsFiring);
 	DOREPLIFETIME(AMultiplayerCharacter, AllWeapons);
 	DOREPLIFETIME(AMultiplayerCharacter, CurrentWeaponIndex);
 	DOREPLIFETIME(AMultiplayerCharacter, UseADS);
@@ -3433,6 +4838,7 @@ void AMultiplayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(AMultiplayerCharacter, IsAiming);
 	DOREPLIFETIME(AMultiplayerCharacter, IsADSing);
 	DOREPLIFETIME(AMultiplayerCharacter, IsZoomedIn);
+	DOREPLIFETIME(AMultiplayerCharacter, IsWeaponHolstered);
 	DOREPLIFETIME(AMultiplayerCharacter, AllSharedCaliberNames);
 	DOREPLIFETIME(AMultiplayerCharacter, AllSharedCaliberAmounts);
 	DOREPLIFETIME(AMultiplayerCharacter, ReplicatedControlRotation);
@@ -3448,6 +4854,7 @@ void AMultiplayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		EnhancedInputComponent->BindAction(IA_Move, ETriggerEvent::Triggered, this, &AMultiplayerCharacter::Move);
+		EnhancedInputComponent->BindAction(IA_Move, ETriggerEvent::Completed, this, &AMultiplayerCharacter::ReleaseMove);
 		EnhancedInputComponent->BindAction(IA_Look, ETriggerEvent::Triggered, this, &AMultiplayerCharacter::Look);
 		EnhancedInputComponent->BindAction(IA_GamepadLook, ETriggerEvent::Triggered, this, &AMultiplayerCharacter::GamepadLook);
 		EnhancedInputComponent->BindAction(IA_Interact, ETriggerEvent::Started, this, &AMultiplayerCharacter::Interact);
@@ -3459,11 +4866,15 @@ void AMultiplayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInputComponent->BindAction(IA_Aim, ETriggerEvent::Started, this, &AMultiplayerCharacter::AimInput);
 		EnhancedInputComponent->BindAction(IA_Aim, ETriggerEvent::Completed, this, &AMultiplayerCharacter::ReleaseAimInput);
 		EnhancedInputComponent->BindAction(IA_Reload, ETriggerEvent::Started, this, &AMultiplayerCharacter::Reload);
-		EnhancedInputComponent->BindAction(IA_SwitchWeapons, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchWeaponsInput);
+		EnhancedInputComponent->BindAction(IA_NextWeapon, ETriggerEvent::Started, this, &AMultiplayerCharacter::NextWeapon);
+		EnhancedInputComponent->BindAction(IA_PreviousWeapon, ETriggerEvent::Started, this, &AMultiplayerCharacter::LastWeapon);
 		EnhancedInputComponent->BindAction(IA_GamepadSwitchWeapons, ETriggerEvent::Started, this, &AMultiplayerCharacter::NextWeapon);
 		EnhancedInputComponent->BindAction(IA_SwitchPerspective, ETriggerEvent::Started, this, &AMultiplayerCharacter::ToggleThirdPerson);
 		EnhancedInputComponent->BindAction(IA_ThirdPersonShoulderSwap, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwapShoulders);
 		EnhancedInputComponent->BindAction(IA_SwitchToWeapon1, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchToWeapon1);
 		EnhancedInputComponent->BindAction(IA_SwitchToWeapon2, ETriggerEvent::Started, this, &AMultiplayerCharacter::SwitchToWeapon2);
+		EnhancedInputComponent->BindAction(IA_ToggleWeaponHolstered, ETriggerEvent::Started, this, &AMultiplayerCharacter::ToggleWeaponHolstered);
+		EnhancedInputComponent->BindAction(IA_Sprint, ETriggerEvent::Started, this, &AMultiplayerCharacter::SprintInput);
+		EnhancedInputComponent->BindAction(IA_Sprint, ETriggerEvent::Completed, this, &AMultiplayerCharacter::ReleaseSprintInput);
 	}
 }
