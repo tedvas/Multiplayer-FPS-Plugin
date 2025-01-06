@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "2.5.6",
+	"VersionName": "2.5.7",
 	"FriendlyName": "Multiplayer FPS",
 	"Description": "This plugin allows you to create a multiplayer first person shooter with ease.",
 	"Category": "Multiplayer FPS",
@@ -23,7 +23,8 @@
 			"PlatformAllowList": [
 				"Win64",
 				"Linux",
-				"LinuxArm64"
+				"LinuxArm64",
+				"Mac"
 			]
 		}
 	],
