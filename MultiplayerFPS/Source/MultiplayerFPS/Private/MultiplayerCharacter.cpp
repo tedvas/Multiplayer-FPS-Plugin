@@ -134,6 +134,8 @@ AMultiplayerCharacter::AMultiplayerCharacter()
 	TimeToUnHolsterWeaponWhenFiring = 0.0f;
 	TimeToUnHolsterWeaponWhenAiming = 0.0f;
 	UseADS = 0;
+	OverrideSwitchPerspectiveWhenAiming = EAimSwitchPerspectiveType::No;
+	UsingThirdPersonBeforeAiming = false;
 	ArmsHorizontalRotaitonAxis = 2;
 	ArmsHorizontalLocationAxis = 1;
 	ArmsVerticalRotationAxis = 1;
@@ -848,24 +850,29 @@ void AMultiplayerCharacter::SetMovementSpeedBasedOnSettings()
 		
 		if (IsSprinting == true)
 		{
-			if (GetWeapon() && (GetIsWeaponHolstered() == false || (GetIsWeaponHolstered() == true && ApplySpeedPenaltyIfWeaponsHolstered == true)))
+			NewSpeed = SprintingMovementSpeed;
+
+			if (GetAmountOfWeapons() > 0)
 			{
-				if (GetWeapon()->ShouldDivideSprintSpeedPenalty == true)
+				if (GetWeapon() && (GetIsWeaponHolstered() == false || (GetIsWeaponHolstered() == true && ApplySpeedPenaltyIfWeaponsHolstered == true)))
 				{
-					NewSpeed = SprintingMovementSpeed / GetWeapon()->SprintSpeedPenalty;
+					if (GetWeapon()->ShouldDivideSprintSpeedPenalty == true)
+					{
+						NewSpeed = SprintingMovementSpeed / GetWeapon()->SprintSpeedPenalty;
+					}
+					else
+					{
+						NewSpeed = SprintingMovementSpeed - GetWeapon()->SprintSpeedPenalty;
+					}
 				}
 				else
 				{
-					NewSpeed = SprintingMovementSpeed - GetWeapon()->SprintSpeedPenalty;
-				}
-			}
-			else
-			{
-				NewSpeed = SprintingMovementSpeed;
+					NewSpeed = SprintingMovementSpeed;
 
-				if (!GetWeapon())
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "If this is only showing up on begin play you can ignore it, Current Weapon Invalid, Using Default Sprint Speed Instead MultiplayerCharacter.cpp:SetMovementSpeedBasedOnSettings");
+					if (!GetWeapon())
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "If this is only showing up on begin play you can ignore it, Current Weapon Invalid, Using Default Sprint Speed Instead MultiplayerCharacter.cpp:SetMovementSpeedBasedOnSettings");
+					}
 				}
 			}
 			
@@ -873,24 +880,29 @@ void AMultiplayerCharacter::SetMovementSpeedBasedOnSettings()
 		}
 		else
 		{
-			if (GetWeapon() && (GetIsWeaponHolstered() == false || (GetIsWeaponHolstered() == true && ApplySpeedPenaltyIfWeaponsHolstered == true)))
+			NewSpeed = DefaultMovementSpeed;
+
+			if (GetAmountOfWeapons() > 0)
 			{
-				if (GetWeapon()->ShouldDivideSprintSpeedPenalty == true)
+				if (GetWeapon() && (GetIsWeaponHolstered() == false || (GetIsWeaponHolstered() == true && ApplySpeedPenaltyIfWeaponsHolstered == true)))
 				{
-					NewSpeed = DefaultMovementSpeed / GetWeapon()->MovementSpeedPenalty;
+					if (GetWeapon()->ShouldDivideSprintSpeedPenalty == true)
+					{
+						NewSpeed = DefaultMovementSpeed / GetWeapon()->MovementSpeedPenalty;
+					}
+					else
+					{
+						NewSpeed = DefaultMovementSpeed - GetWeapon()->MovementSpeedPenalty;
+					}
 				}
 				else
 				{
-					NewSpeed = DefaultMovementSpeed - GetWeapon()->MovementSpeedPenalty;
-				}
-			}
-			else
-			{
-				NewSpeed = DefaultMovementSpeed;
+					NewSpeed = DefaultMovementSpeed;
 
-				if (!GetWeapon())
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "If this is only showing up on begin play you can ignore it, Current Weapon Invalid, Using Default Movement Speed Instead MultiplayerCharacter.cpp:SetMovementSpeedBasedOnSettings");
+					if (!GetWeapon())
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "If this is only showing up on begin play you can ignore it, Current Weapon Invalid, Using Default Movement Speed Instead MultiplayerCharacter.cpp:SetMovementSpeedBasedOnSettings");
+					}
 				}
 			}
 			
@@ -1422,7 +1434,27 @@ void AMultiplayerCharacter::ToggleThirdPerson()
 	{
 		if (GetOwningController()->GetCanSwitchPerspective())
 		{
-			SetUsingThirdPerson(!GetUsingThirdPerson(), false);
+			bool CanTogglePerspective = true;
+
+			if (GetIsAiming() == true)
+			{
+				if (OverrideSwitchPerspectiveWhenAiming != EAimSwitchPerspectiveType::No)
+				{
+					CanTogglePerspective = false;
+				}
+				else if (GetWeapon())
+				{
+					if (GetWeapon()->GetSwitchPerspectiveWhenAiming() != EAimSwitchPerspectiveType::No)
+					{
+						CanTogglePerspective = false;
+					}
+				}
+			}
+
+			if (CanTogglePerspective == true)
+			{
+				SetUsingThirdPerson(!GetUsingThirdPerson(), false);
+			}
 		}
 	}
 	else
@@ -3743,6 +3775,35 @@ void AMultiplayerCharacter::Aim()
 			if (AimingCancelsReload == true || IsReloading == false)
 			{
 				SetArmsAnimationMode();
+				UsingThirdPersonBeforeAiming = GetUsingThirdPerson();
+
+				if (OverrideSwitchPerspectiveWhenAiming == EAimSwitchPerspectiveType::No)
+				{
+					if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == EAimSwitchPerspectiveType::SwitchToFirstPerson)
+					{
+						SetUsingThirdPerson(false);
+					}
+					else if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == EAimSwitchPerspectiveType::SwitchToThirdPerson)
+					{
+						SetUsingThirdPerson(true);
+					}
+					else if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == EAimSwitchPerspectiveType::SwitchToOppositePerspective)
+					{
+						SetUsingThirdPerson(!GetUsingThirdPerson());
+					}
+				}
+				else if (OverrideSwitchPerspectiveWhenAiming == EAimSwitchPerspectiveType::SwitchToFirstPerson)
+				{
+					SetUsingThirdPerson(false);
+				}
+				else if (OverrideSwitchPerspectiveWhenAiming == EAimSwitchPerspectiveType::SwitchToThirdPerson)
+				{
+					SetUsingThirdPerson(true);
+				}
+				else
+				{
+					SetUsingThirdPerson(!GetUsingThirdPerson());
+				}
 				
 				FVector AimLocation;
 				FRotator AimRotation;
@@ -3752,7 +3813,7 @@ void AMultiplayerCharacter::Aim()
 				if ((UseADS == 0 && CurrentWeapon->GetUseADS() == 0) || CurrentWeapon->GetUseADS() == 2 || (UseADS == 1 && CurrentWeapon->GetUseADS() < 2))
 				{
 					IsZoomingForAim = true;
-						
+
 					AimLocation = CurrentWeapon->GetADSArmsLocation();
 					AimRotation = CurrentWeapon->GetADSArmsRotation();
 
@@ -3844,6 +3905,15 @@ void AMultiplayerCharacter::StopAiming()
 	{
 		if ((IsAiming == true || IsADSing == true || IsZoomedIn == true) && ArmsMesh)
 		{
+			if (OverrideSwitchPerspectiveWhenAiming != EAimSwitchPerspectiveType::No)
+			{
+				SetUsingThirdPerson(UsingThirdPersonBeforeAiming);
+			}
+			else if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() != EAimSwitchPerspectiveType::No)
+			{
+				SetUsingThirdPerson(UsingThirdPersonBeforeAiming);
+			}
+			
 			FVector AimLocation;
 			FRotator AimRotation;
 			
