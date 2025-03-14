@@ -969,6 +969,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Weapons", meta = (Tooltip = "0 = determined by weapon, 1 = ADS with all weapons, 2 = zoom in with all weapons", ClampMin = 0, ClampMax = 2))
 	int UseADS;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "This is normally determined per weapon but this can globally override it, this will still apply even if the player doesn't have the option to switch perspective"))
+	TEnumAsByte<EAimSwitchPerspectiveType> OverrideSwitchPerspectiveWhenAiming;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Weapons")
+	bool UsingThirdPersonBeforeAiming;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapons", meta = (Tooltip = "0 = X (Roll), 1 = Y (Pitch), 2 = Z (Yaw), This will depend on your model but for the default arms 2 is correct, It has to be perfectly along an axis", ClampMin = 0.0f, ClampMax = 2.0f))
 	int ArmsHorizontalRotaitonAxis;
 
