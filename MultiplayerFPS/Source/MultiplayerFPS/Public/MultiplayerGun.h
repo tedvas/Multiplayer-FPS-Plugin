@@ -26,6 +26,12 @@ class UDamageType;
 class UForceFeedbackAttenuation;
 class AMultiplayerCharacter;
 
+UENUM()
+enum EAimSwitchPerspectiveType
+{
+	No, SwitchToFirstPerson, SwitchToThirdPerson, SwitchToOppositePerspective
+};
+
 USTRUCT()
 struct FGunHitEffectsReplication
 {
@@ -78,6 +84,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This is only visible to other players"))
 	USkeletalMeshComponent* ThirdPersonGunSkeletalMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	USceneComponent* GripSceneComponent;
 
 	// Set this to false in the default constructor to use a static mesh
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (Tooltip = "This needs to be changed in C++"))
@@ -282,6 +291,12 @@ public:
 	virtual int GetUseADS();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetSwitchPerspectiveWhenAiming(TEnumAsByte<EAimSwitchPerspectiveType> NewSwitchPerspectiveWhenAiming);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual TEnumAsByte<EAimSwitchPerspectiveType> GetSwitchPerspectiveWhenAiming();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetDivideAimingFOV(bool NewDivideAimingFOV);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
@@ -298,6 +313,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	virtual float GetZoomFOV();
+
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	virtual void SetManuallySetGunLocation(bool NewManuallySetGunLocation);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
+	virtual bool GetManuallySetGunLocation();
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void SetTimeToADS(float NewTimeToADS);
@@ -1010,10 +1031,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (Tooltip = "Set to 0 to disable", ClampMin = 0.0f))
 	float TimeToDespawnAfterDropped;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "Setting this to 0 will make the gun not use a socket and instead just use relative location and rotation, setting this to 1 will snap to socket without scale, and 2 will snap to socket including scale"), meta = (ClampMin = 0, ClampMax = 2))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "If false the Grip scene component will be used to set gun location, this does not apply to the third person mesh, setting this to false will require a socket name"))
+	bool ManuallySetGunLocation;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "Setting this to 0 will make the gun not use a socket and instead just use relative location and rotation, setting this to 1 will snap to socket without scale, and 2 will snap to socket including scale, if ManuallySetGunLocation is false this will act as though it is 0"), meta = (ClampMin = 0, ClampMax = 2))
 	int SnapToSocket;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "If SnapToSocket = 0 then it will just attach to a socket if you set this variable"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "If SnapToSocket = 0 then it will just attach to a socket if you set this variable, this is required to be filled in if ManuallySetGunLocation is false"))
 	FName SocketName;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gun Location", meta = (Tooltip = "If SnapToSocket = 0 then it will just attach to a socket if you set this variable"))
@@ -1216,6 +1240,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "0 = will use ADS if player character allows, 1 = will use zoom if player character allows, 2 = will use ADS overriding variable in player character, 3 = will use zoom overriding variable in player character", ClampMin = 0, ClampMax = 3))
 	int UseADS;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Aiming", meta = (Tooltip = "There is an option to override this on the player character, this will still apply even if the player doesn't have the option to switch perspective"))
+	TEnumAsByte<EAimSwitchPerspectiveType> SwitchPerspectiveWhenAiming;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Aiming", meta = (Tooltip = "If false aiming will subtract from current FOV, if true aiming will divide from current FOV"))
 	bool DivideAimingFOV;

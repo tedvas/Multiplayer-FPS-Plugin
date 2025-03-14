@@ -66,6 +66,8 @@ AMultiplayerGun::AMultiplayerGun()
 		ThirdPersonGunStaticMesh->SetCollisionProfileName("NoCollision");
 	}
 
+	GripSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Grip Scene"));
+	GripSceneComponent->SetupAttachment(RootComponent, NAME_None);
 	FireSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Fire Scene Component"));
 	FireSceneComponent->SetupAttachment(RootComponent, NAME_None);
 	FireSceneComponent->SetIsReplicated(true);
@@ -168,6 +170,7 @@ AMultiplayerGun::AMultiplayerGun()
 	AmountOfTimesPickedup = 0;
 	WasPickedupBeginPlay = true;
 	TimeToDespawnAfterDropped = 30.0f;
+	ManuallySetGunLocation = true;
 	SnapToSocket = 0;
 	SpawnSmokeEffectWhenShooting = 1;
 	AmountOfShotsToSpawnSmoke = 20;
@@ -201,6 +204,7 @@ AMultiplayerGun::AMultiplayerGun()
 	UseActorClassesForHitMarkers = 2;
 	UseFireArmsAnimation = 0;
 	UseADS = 0;
+	SwitchPerspectiveWhenAiming = EAimSwitchPerspectiveType::No;
 	DivideAimingFOV = false;
 	ADSFOV = 15.0f;
 	ZoomFOV = 10.0f;
@@ -478,13 +482,21 @@ void AMultiplayerGun::MulticastSetWasPickedup_Implementation(bool Pickedup, UPri
 					ThirdPersonGunMeshComponent->SetVisibility(true);
 				}
 
-				if (SnapToSocket == 0)
+				if (SnapToSocket == 0 || (ManuallySetGunLocation == false && SocketName.GetStringLength() > 0))
 				{
 					AttachToComponent(ComponentToAttachTo, FAttachmentTransformRules::KeepWorldTransform, SocketName);
 
-					SetActorRelativeLocation(GunRelativeLocation);
-					SetActorRelativeRotation(GunRelativeRotation);
+					if (ManuallySetGunLocation == true)
+					{
+						SetActorRelativeLocation(GunRelativeLocation);
+					}
+					else
+					{
+						SetActorRelativeLocation(-GripSceneComponent->GetRelativeLocation());
+					}
 
+					SetActorRelativeRotation(GunRelativeRotation);
+					
 					if (GetOwningPlayerCast())
 					{
 						if (GetOwningPlayerCast()->GetPlayerModelMesh())
@@ -1942,10 +1954,13 @@ void AMultiplayerGun::ShotgunFire()
 			AmountOfBurstShotsFired++;
 		}
 
-		for (int32 Index = 0; Index != ShotgunAmountOfPellets; ++Index)
+		if (HasAuthority())
 		{
-			Fire();
-			ShotgunAmountOfPelletsShot++;
+			for (int32 Index = 0; Index != ShotgunAmountOfPellets; ++Index)
+			{
+				Fire();
+				ShotgunAmountOfPelletsShot++;
+			}
 		}
 
 		if (CrumbleDestructibleMeshesWithEveryShotgunPellet == false)
@@ -2680,6 +2695,16 @@ int AMultiplayerGun::GetUseADS()
 	return UseADS;
 }
 
+void AMultiplayerGun::SetSwitchPerspectiveWhenAiming(TEnumAsByte<EAimSwitchPerspectiveType> NewSwitchPerspectiveWhenAiming)
+{
+	SwitchPerspectiveWhenAiming = NewSwitchPerspectiveWhenAiming;
+}
+
+TEnumAsByte<EAimSwitchPerspectiveType> AMultiplayerGun::GetSwitchPerspectiveWhenAiming()
+{
+	return SwitchPerspectiveWhenAiming;
+}
+
 void AMultiplayerGun::SetDivideAimingFOV(bool NewDivideAimingFOV)
 {
 	DivideAimingFOV = NewDivideAimingFOV;
@@ -2708,6 +2733,16 @@ void AMultiplayerGun::SetZoomFOV(float NewZoomFOV)
 float AMultiplayerGun::GetZoomFOV()
 {
 	return ZoomFOV;
+}
+
+void AMultiplayerGun::SetManuallySetGunLocation(bool NewManuallySetGunLocation)
+{
+	ManuallySetGunLocation = NewManuallySetGunLocation;
+}
+
+bool AMultiplayerGun::GetManuallySetGunLocation()
+{
+	return ManuallySetGunLocation;
 }
 
 void AMultiplayerGun::SetTimeToADS(float NewTimeToADS)
