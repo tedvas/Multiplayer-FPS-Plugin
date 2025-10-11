@@ -11,7 +11,7 @@
 #include "MultiplayerProjectile.generated.h"
 
 UDELEGATE()
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnProjectileHit, AActor*, ActorHit, UPhysicalMaterial*, HitSurface);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnProjectileHit, AActor*, ActorHit, UPhysicalMaterial*, HitSurface, const FHitResult&, HitResult);
 
 UCLASS()
 class MULTIPLAYERFPS_API AMultiplayerProjectile : public AActor

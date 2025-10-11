@@ -1226,7 +1226,8 @@ void AMultiplayerGun::Fire()
 
 						if (HasAuthority())
 						{
-							CallBulletHitDelegate(HitActor, HitSurface);
+							CallBulletHitDelegate(HitActor, HitSurface, Hit);
+							OnLineTraceHit.Broadcast(HitActor, HitSurface, Hit);
 						}
 
 						if (IsExplosive == true)
@@ -1925,9 +1926,9 @@ void AMultiplayerGun::ExecuteHitFunction_Implementation(AActor* ParentPlayer, AA
 
 }
 
-void AMultiplayerGun::CallBulletHitDelegate(AActor* HitActor, UPhysicalMaterial* HitSurface)
+void AMultiplayerGun::CallBulletHitDelegate(AActor* HitActor, UPhysicalMaterial* HitSurface, const FHitResult& HitResult)
 {
-	OnBulletHit.Broadcast(HitActor, HitSurface);
+	OnBulletHit.Broadcast(HitActor, HitSurface, HitResult);
 }
 
 void AMultiplayerGun::ShotgunFire()
