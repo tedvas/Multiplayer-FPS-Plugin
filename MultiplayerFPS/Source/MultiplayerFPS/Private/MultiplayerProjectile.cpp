@@ -75,7 +75,7 @@ void AMultiplayerProjectile::RegisterHit_Implementation(const FHitResult& Hit)
 		UParticleSystem* HitEffect;
 		UPhysicalMaterial* HitSurface = Hit.PhysMaterial.Get();
 
-		FOnProjectileHit.Broadcast(HitActor, HitSurface);
+		FOnProjectileHit.Broadcast(HitActor, HitSurface, Hit);
 
 		if (OwningPlayer)
 		{

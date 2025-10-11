@@ -14,7 +14,10 @@
 #include "MultiplayerGun.generated.h"
 
 UDELEGATE()
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnBulletHit, AActor*, ActorHit, UPhysicalMaterial*, HitSurface);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnBulletHit, AActor*, ActorHit, UPhysicalMaterial*, HitSurface, const FHitResult&, HitResult);
+
+UDELEGATE()
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnLineTraceHit, AActor*, ActorHit, UPhysicalMaterial*, HitSurface, const FHitResult&, HitResult);
 
 class USceneComponent;
 class UAnimMontage;
@@ -66,6 +69,9 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Functions")
 	FOnBulletHit OnBulletHit;
+
+	UPROPERTY(BlueprintAssignable, Category = "Functions")
+	FOnLineTraceHit OnLineTraceHit;
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	UPrimitiveComponent* GetGunMesh();
@@ -201,7 +207,7 @@ public:
 	void ExecuteHitFunction(AActor* ParentPlayer = nullptr, AActor* HitActor = nullptr);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
-	virtual void CallBulletHitDelegate(AActor* HitActor, UPhysicalMaterial* HitSurface);
+	virtual void CallBulletHitDelegate(AActor* HitActor, UPhysicalMaterial* HitSurface, const FHitResult& HitResult);
 
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void ContinuousFire_BP();
