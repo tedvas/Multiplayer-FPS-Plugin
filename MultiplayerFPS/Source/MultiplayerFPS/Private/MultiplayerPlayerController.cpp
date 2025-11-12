@@ -7,7 +7,6 @@
 #include "MultiplayerCharacter.h"
 #include "MultiplayerGameMode.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "Engine.h"
 
 AMultiplayerPlayerController::AMultiplayerPlayerController()
 {
