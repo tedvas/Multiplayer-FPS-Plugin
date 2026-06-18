@@ -286,6 +286,11 @@ void AMultiplayerPlayerController::PossessPawn(TSubclassOf<APawn> NewPawnToSpawn
 		if (NewPawnToPossess)
 		{
 			Possess(NewPawnToPossess);
+			
+			if (HasAuthority())
+			{
+				ApplySettingsToCharacter();
+			}
 
 			if (KeepControlRotation == true)
 			{
@@ -369,6 +374,7 @@ void AMultiplayerPlayerController::ApplySettingsToCharacter()
 
 		if (AMultiplayerCharacter* PlayerCast = Cast<AMultiplayerCharacter>(GetControlledPawn()))
 		{
+			ConsoleCommand("FOV " + FString::SanitizeFloat(FieldOfView));
 			PlayerCast->UsingThirdPersonLeftShoulder = GetUsingThirdPersonLeftShoulder();
 			PlayerCast->SetUsingThirdPerson(GetUsingThirdPerson(), true);
 			PlayerCast->FieldOfView = FieldOfView;
