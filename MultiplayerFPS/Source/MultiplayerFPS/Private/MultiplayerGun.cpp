@@ -212,6 +212,9 @@ AMultiplayerGun::AMultiplayerGun()
 	TimeToZoom = 0.15f;
 	VerticalRecoil = 1.0f;
 	HorizontalRecoil = 0.25f;
+	UseLegacyRecoilSystem = true;
+	RecoilTickAmount = 4.0f;
+	RecoilTickRate = 0.005f;
 	ShowBulletPath = false;
 	BulletPathColor = FColor::Red;
 	BulletPathPersists = false;
@@ -980,8 +983,6 @@ void AMultiplayerGun::Fire()
 			if (!HasAuthority())
 			{
 				TempBurstShots++;
-			
-				ClientFire();
 
 				if (IsShotgun == false && TempBurstShots >= AmountOfShotsForBurst)
 				{
@@ -1105,17 +1106,7 @@ void AMultiplayerGun::Fire()
 					break;
 				case 2:
 					FireRotation = FireSceneComponent->GetComponentRotation();
-					
-					if (GetOwningPlayerCast())
-					{
-						FireLocation = GetOwningPlayerCast()->ReplicatedCameraLocation;
-					}
-					else
-					{
-						GetOwningPlayer()->GetActorEyesViewPoint(FireLocation, TempRotator);
-
-						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid MultiplayerGun.cpp:Fire 2");
-					}
+					GetOwningPlayer()->GetActorEyesViewPoint(FireLocation, TempRotator);
 					
 					break;
 				case 3:
@@ -1123,18 +1114,7 @@ void AMultiplayerGun::Fire()
 					FireRotation = FireSceneComponent->GetComponentRotation();
 					break;
 				default:
-					if (GetOwningPlayerCast())
-					{
-						FireLocation = GetOwningPlayerCast()->ReplicatedCameraLocation;
-						FireRotation = GetOwningPlayerCast()->ReplicatedCameraRotation;
-					}
-					else
-					{
-						GetOwningPlayer()->GetActorEyesViewPoint(FireLocation, FireRotation);
-
-						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "GetOwningPlayerCast Invalid MultiplayerGun.cpp:Fire 3");
-					}
-					
+					GetOwningPlayer()->GetActorEyesViewPoint(FireLocation, FireRotation);
 					break;
 				}
 
@@ -1295,9 +1275,9 @@ void AMultiplayerGun::Fire()
 						GunHitEffectsReplication.HitEffect = HitEffect;
 						GunHitEffectsReplication.HitResult = Hit;
 
-						if (HitEffect)
+						if (HitEffect && HasAuthority())
 						{
-							UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), HitEffect, Hit.ImpactPoint, Hit.ImpactNormal.Rotation(), HitEffectScale);
+							MulticastSpawnHitEffect(HitEffect, Hit.ImpactPoint, Hit.ImpactNormal.Rotation());
 						}
 
 						USoundBase* ChosenHitSound;
@@ -1854,7 +1834,7 @@ void AMultiplayerGun::ClientFire_Implementation()
 		}
 	}
 	
-	AddRecoil_BP();
+	AddRecoil();
 
 	if (SpawnSmokeEffectWhenShooting == 1)
 	{
@@ -1865,6 +1845,11 @@ void AMultiplayerGun::ClientFire_Implementation()
 			SpawnSmokeEffect_BP();
 		}
 	}
+}
+
+void AMultiplayerGun::MulticastSpawnHitEffect_Implementation(UParticleSystem* HitEffect, FVector Location, FRotator Rotation)
+{
+	UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), HitEffect, Location, Rotation, HitEffectScale);
 }
 
 void AMultiplayerGun::AddPredeterminedSpread()
@@ -1939,8 +1924,6 @@ void AMultiplayerGun::ShotgunFire()
 		{
 			ServerShotgunFire();
 		}
-
-		ClientFire();
 
 		ShotgunPelletHitLocations.Empty();
 
@@ -2043,7 +2026,7 @@ void AMultiplayerGun::ShotgunFire()
 			}
 			else
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "FireSceneToUse Invalid MultiplayerGun.cpp:Fire");
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "FireSceneToUse Invalid MultiplayerGun.cpp:ShotgunFire");
 			}
 		}
 
@@ -2080,6 +2063,11 @@ void AMultiplayerGun::ShotgunFire()
 			}
 		}
 
+		if (SwitchedFireToServer == false)
+		{
+			ClientFire();
+		}
+
 		FireTimerDelegate.BindUFunction(this, FName("SetCanShoot"), true);
 		GetWorldTimerManager().SetTimer(FireTimerHandle, FireTimerDelegate, FireRate, false, FireRate);
 	}
@@ -2091,6 +2079,8 @@ void AMultiplayerGun::ShotgunFire()
 
 void AMultiplayerGun::ServerShotgunFire_Implementation()
 {
+	SwitchedFireToServer = true;
+
 	ShotgunFire();
 }
 
@@ -2444,6 +2434,69 @@ void AMultiplayerGun::StopFiring(bool EvenCancelBurst)
 		IsOverheating = false;
 
 		CoolDown_BP();
+	}
+}
+
+void AMultiplayerGun::AddRecoil_Implementation()
+{
+	if (UseLegacyRecoilSystem == false)
+	{
+		RemainingVerticalRecoil = VerticalRecoil;
+		RemainingHorizontalRecoil = HorizontalRecoil;
+	
+		if (RecoilTickRate > 0.0f)
+		{
+			VerticalRecoilToSubtract = VerticalRecoil / RecoilTickAmount;
+			HorizontalRecoilToSubtract = HorizontalRecoil / RecoilTickAmount;
+		}
+		else
+		{
+			VerticalRecoilToSubtract = VerticalRecoil;
+			HorizontalRecoilToSubtract = HorizontalRecoil;
+		}
+	
+		ApplyRecoil();
+	}
+}
+
+void AMultiplayerGun::ApplyRecoil()
+{
+	if (RemainingVerticalRecoil > 0.0f || RemainingHorizontalRecoil > 0.0f)
+	{
+		if (GetOwningPlayerCast())
+		{
+			if (GetOwningPlayerCast()->GetController() && GetOwningPlayerCast()->CameraComponent)
+			{
+				const FRotator CurrentRotation = GetOwningPlayerCast()->GetController()->GetControlRotation();
+				
+				if (RecoilTickRate > 0.0f && RecoilTickAmount > 1.0f)
+				{
+					GetOwningPlayerCast()->GetController()->SetControlRotation(FRotator(CurrentRotation.Pitch + (RemainingVerticalRecoil - VerticalRecoilToSubtract), CurrentRotation.Yaw + (RemainingHorizontalRecoil - HorizontalRecoilToSubtract), CurrentRotation.Roll));
+				}
+				else
+				{
+					GetOwningPlayerCast()->GetController()->SetControlRotation(FRotator(CurrentRotation.Pitch + VerticalRecoil, CurrentRotation.Yaw + HorizontalRecoil, CurrentRotation.Roll));
+				}
+			
+				RemainingVerticalRecoil -= VerticalRecoilToSubtract;
+				RemainingHorizontalRecoil -= HorizontalRecoilToSubtract;
+				
+				if (RemainingVerticalRecoil < 0.0f)
+				{
+					RemainingVerticalRecoil = 0.0f;
+				}
+				
+				if (RemainingHorizontalRecoil < 0.0f)
+				{
+					RemainingHorizontalRecoil = 0.0f;
+				}
+			}
+		}
+	
+		if (RecoilTickRate > 0.0f && RecoilTickAmount > 1.0f)
+		{
+			GetWorldTimerManager().SetTimer(RecoilTimerHandle, this, &AMultiplayerGun::ApplyRecoil, RecoilTickRate, false);
+		}
 	}
 }
 

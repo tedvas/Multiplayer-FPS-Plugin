@@ -6,7 +6,7 @@
 void AMultiplayerGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	AddPlayerController(NewPlayer);
-	DispatchPostLogin(NewPlayer);
+	Super::PostLogin(NewPlayer);
 }
 
 void AMultiplayerGameMode::Logout(AController* ExitingPlayer)
