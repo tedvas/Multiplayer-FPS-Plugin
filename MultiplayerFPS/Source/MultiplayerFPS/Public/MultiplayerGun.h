@@ -199,6 +199,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void ClientFire_BP();
+	
+	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
+	void MulticastSpawnHitEffect(UParticleSystem* HitEffect, FVector Location, FRotator Rotation);
 
 	UFUNCTION(BlueprintCallable, Category = "Functions")
 	virtual void AddPredeterminedSpread();
@@ -248,8 +251,11 @@ public:
 	UFUNCTION(BlueprintCallable, Server, Reliable, Category = "Functions")
 	virtual void ServerStopFiring(bool EvenCancelBurst = false);
 
-	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
-	void AddRecoil_BP();
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Functions")
+	void AddRecoil();
+	
+	UFUNCTION(BlueprintCallable, Category = "Functions")
+	void ApplyRecoil();
 
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Functions")
 	void SpawnSmokeEffect_BP();
@@ -1283,6 +1289,29 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil")
 	float HorizontalRecoil;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Tooltip = "This is mainly here for people updating from older versions so they don't have to adjust the recoil again, if this is true recoil amount will vary with framerate so I would recommend keeping this false"), Category = "Recoil")
+	bool UseLegacyRecoilSystem;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Tooltip = "This is the amount of times recoil is applied when interpolating, 1 = 1 time or instant", ClampMin = 1.0f), Category = "Recoil")
+	float RecoilTickAmount;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (Tooltip = "This is the amount of time (seconds) between each recoil tick, this is to ensure recoil results are the same no matter the frame rate, 0 = instant", ClampMin = 0.0f), Category = "Recoil")
+	float RecoilTickRate;
+	
+private:
+	UPROPERTY()
+	float RemainingVerticalRecoil;
+	
+	UPROPERTY()
+	float RemainingHorizontalRecoil;
+	
+	UPROPERTY()
+	float VerticalRecoilToSubtract;
+	
+	UPROPERTY()
+	float HorizontalRecoilToSubtract;
+	
+protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil")
 	TSubclassOf<UCameraShakeBase> FireCameraShake;
 
@@ -1360,6 +1389,9 @@ protected:
 	FTimerHandle BulletHitModeTimerHandle;
 
 	FTimerDelegate BulletHitModeTimerDelegate;
+	
+	UPROPERTY(BlueprintReadWrite, Category = "Timers")
+	FTimerHandle RecoilTimerHandle;
 
 public:
 	// Called every frame
