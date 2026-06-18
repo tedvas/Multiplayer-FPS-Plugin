@@ -126,7 +126,7 @@ public:
 	virtual void ClientRemoveInput();
 
 	UFUNCTION(BlueprintCallable, Client, Reliable, Category = "Functions", meta = (Tooltip = "This will automatically get the owning controller, so it does not need an input"))
-	virtual void SetOwningController();
+	virtual void SetOwningController(bool UsePlayerIndex = true);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Functions")
 	AMultiplayerPlayerController* GetOwningController();
@@ -149,6 +149,7 @@ public:
 	UFUNCTION(BlueprintCallable, NetMulticast, Reliable, Category = "Functions")
 	virtual void MulticastReplicateControlRotation(FRotator ControlRotation);
 
+	virtual FVector GetPawnViewLocation() const override;
 	virtual void RecalculateBaseEyeHeight() override;
 	virtual void Move(const FInputActionValue& Value);
 	virtual void ReleaseMove(const FInputActionValue& Value);
