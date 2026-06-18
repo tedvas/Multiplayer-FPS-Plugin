@@ -157,7 +157,6 @@ void AMultiplayerCharacter::ApplySettings()
 {
 	SetupInput();
 	SetSensitivity();
-	SetFOV_BP(FieldOfView);
 	ApplyPerspectiveVisibility();
 }
 
@@ -236,9 +235,9 @@ void AMultiplayerCharacter::ClientRemoveInput_Implementation()
 	}
 }
 
-void AMultiplayerCharacter::SetOwningController_Implementation()
+void AMultiplayerCharacter::SetOwningController_Implementation(bool UsePlayerIndex)
 {
-	if (APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), PlayerIndex))
+	if (APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), UsePlayerIndex ? PlayerIndex : 0))
 	{
 		OwningController = PlayerController;
 
@@ -247,20 +246,30 @@ void AMultiplayerCharacter::SetOwningController_Implementation()
 			GetWorldTimerManager().ClearTimer(GetPlayerControllerTimerHandle);
 		}
 
-		if (AMultiplayerPlayerController* MultiplayerController = Cast<AMultiplayerPlayerController>(OwningController))
+		if (!HasAuthority() && IsLocallyControlled())
 		{
-			PlayerIndex = MultiplayerController->GetPlayerIndex();
-			MultiplayerController->ApplySettingsToCharacter();
+			if (AMultiplayerPlayerController* MultiplayerController = Cast<AMultiplayerPlayerController>(OwningController))
+			{
+				PlayerIndex = MultiplayerController->GetPlayerIndex();
+				MultiplayerController->ApplySettingsToCharacter();
+			}
 		}
 	}
 	else
 	{
-		GetWorldTimerManager().SetTimerForNextTick(this, &AMultiplayerCharacter::SetOwningController);
+		FTimerDelegate TimerDelegate;
 
 		if (!GetWorldTimerManager().IsTimerActive(GetPlayerControllerTimerHandle))
 		{
+			TimerDelegate.BindUFunction(this, "SetOwningController", false);
+			GetWorldTimerManager().SetTimerForNextTick(TimerDelegate);
+			
 			GetWorldTimerManager().SetTimer(GetPlayerControllerTimerHandle, this, &AMultiplayerCharacter::PrintStringForOwningControllerInvalid, 10.0f, false, 10.0f);
+			return;
 		}
+		
+		TimerDelegate.BindUFunction(this, "SetOwningController", true);
+		GetWorldTimerManager().SetTimerForNextTick(TimerDelegate);
 	}
 }
 
@@ -345,6 +354,19 @@ void AMultiplayerCharacter::MulticastReplicateControlRotation_Implementation(FRo
 	if (!IsLocallyControlled() && CameraComponent)
 	{
 		CameraComponent->SetWorldRotation(ReplicatedControlRotation);
+	}
+}
+
+FVector AMultiplayerCharacter::GetPawnViewLocation() const
+{
+	if (CameraComponent)
+	{
+		return CameraComponent->GetComponentLocation();
+	}
+	else
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "CameraComponent Invalid, fire location may be inaccurate MultiplayerCharacter.cpp:GetPawnViewLocation");
+		return Super::GetPawnViewLocation();
 	}
 }
 
@@ -3776,27 +3798,30 @@ void AMultiplayerCharacter::Aim()
 			{
 				SetArmsAnimationMode();
 				UsingThirdPersonBeforeAiming = GetUsingThirdPerson();
+				
+				IsAiming = true;
+				SetSensitivity();
 
-				if (OverrideSwitchPerspectiveWhenAiming == EAimSwitchPerspectiveType::No)
+				if (OverrideSwitchPerspectiveWhenAiming == No)
 				{
-					if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == EAimSwitchPerspectiveType::SwitchToFirstPerson)
+					if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == SwitchToFirstPerson)
 					{
 						SetUsingThirdPerson(false);
 					}
-					else if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == EAimSwitchPerspectiveType::SwitchToThirdPerson)
+					else if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == SwitchToThirdPerson)
 					{
 						SetUsingThirdPerson(true);
 					}
-					else if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == EAimSwitchPerspectiveType::SwitchToOppositePerspective)
+					else if (CurrentWeapon->GetSwitchPerspectiveWhenAiming() == SwitchToOppositePerspective)
 					{
 						SetUsingThirdPerson(!GetUsingThirdPerson());
 					}
 				}
-				else if (OverrideSwitchPerspectiveWhenAiming == EAimSwitchPerspectiveType::SwitchToFirstPerson)
+				else if (OverrideSwitchPerspectiveWhenAiming == SwitchToFirstPerson)
 				{
 					SetUsingThirdPerson(false);
 				}
-				else if (OverrideSwitchPerspectiveWhenAiming == EAimSwitchPerspectiveType::SwitchToThirdPerson)
+				else if (OverrideSwitchPerspectiveWhenAiming == SwitchToThirdPerson)
 				{
 					SetUsingThirdPerson(true);
 				}
@@ -3813,6 +3838,7 @@ void AMultiplayerCharacter::Aim()
 				if ((UseADS == 0 && CurrentWeapon->GetUseADS() == 0) || CurrentWeapon->GetUseADS() == 2 || (UseADS == 1 && CurrentWeapon->GetUseADS() < 2))
 				{
 					IsZoomingForAim = true;
+					IsADSing = true;
 
 					AimLocation = CurrentWeapon->GetADSArmsLocation();
 					AimRotation = CurrentWeapon->GetADSArmsRotation();
@@ -3831,6 +3857,7 @@ void AMultiplayerCharacter::Aim()
 				else
 				{
 					IsZoomingForAim = true;
+					IsZoomedIn = true;
 						
 					AimLocation = CurrentWeapon->GetZoomArmsLocation();
 					AimRotation = CurrentWeapon->GetZoomArmsRotation();
@@ -3869,7 +3896,7 @@ void AMultiplayerCharacter::ServerAim_Implementation()
 
 void AMultiplayerCharacter::MulticastAim_Implementation()
 {
-	if (CanAim == true && IsAiming == false)
+	if (CanAim == true)
 	{
 		if (AMultiplayerGun* CurrentWeapon = GetWeapon(true))
 		{
@@ -3903,7 +3930,7 @@ void AMultiplayerCharacter::StopAiming()
 {
 	if (AMultiplayerGun* CurrentWeapon = GetWeapon(true))
 	{
-		if ((IsAiming == true || IsADSing == true || IsZoomedIn == true) && ArmsMesh)
+		if ((IsAiming == true || IsADSing == true || IsZoomedIn == true) && ArmsMesh && IsLocallyControlled())
 		{
 			if (OverrideSwitchPerspectiveWhenAiming != EAimSwitchPerspectiveType::No)
 			{
